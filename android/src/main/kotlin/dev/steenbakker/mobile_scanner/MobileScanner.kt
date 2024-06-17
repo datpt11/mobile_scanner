@@ -412,7 +412,6 @@ class MobileScanner(
         val recording = videoCapture?.output?.prepareRecording(activity.applicationContext, outputOptions)?.apply {
             withAudioEnabled()
         }?.start(ContextCompat.getMainExecutor(activity.applicationContext)) { recordEvent ->
-            Log.d("startRecording", "${recordEvent is VideoRecordEvent.Status}")
             when (recordEvent) {
                 is VideoRecordEvent.Start -> {
                     Log.d("TAG", "Video recording started")
