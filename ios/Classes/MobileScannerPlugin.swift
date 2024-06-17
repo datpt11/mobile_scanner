@@ -60,7 +60,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
         }, zoomScaleChangeCallback: { zoomScale in
             barcodeHandler.publishEvent(["name": "zoomScaleState", "data": zoomScale])
         }, recordStateChangeCallback: { isRecording in
-            barcodeHandler.publishEvent(["name": "isRecording", "data": isRecording])
+            barcodeHandler.publishEvent(["name": "recordState", "data": isRecording])
         }, videoRecordCompletionCallback: { (url, error)  in
             guard let url = url else {
                 print(error ?? "Video recording error")
