@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner_example/barcode_scanner_controller.dart';
 import 'package:mobile_scanner_example/barcode_scanner_listview.dart';
 import 'package:mobile_scanner_example/barcode_scanner_pageview.dart';
+import 'package:mobile_scanner_example/barcode_scanner_recording.dart';
 import 'package:mobile_scanner_example/barcode_scanner_returning_image.dart';
 import 'package:mobile_scanner_example/barcode_scanner_simple.dart';
 import 'package:mobile_scanner_example/barcode_scanner_window.dart';
@@ -109,6 +110,16 @@ class MyHome extends StatelessWidget {
                 );
               },
               child: const Text('MobileScanner with Overlay'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const BarcodeScannerWithRecording(),
+                  ),
+                );
+              },
+              child: const Text('MobileScanner with recording'),
             ),
           ],
         ),

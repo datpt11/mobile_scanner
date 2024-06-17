@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mobile_scanner/src/enums/barcode_format.dart';
 import 'package:mobile_scanner/src/enums/mobile_scanner_authorization_state.dart';
 import 'package:mobile_scanner/src/enums/mobile_scanner_error_code.dart';
+import 'package:mobile_scanner/src/enums/record_state.dart';
 import 'package:mobile_scanner/src/enums/torch_state.dart';
 import 'package:mobile_scanner/src/mobile_scanner_exception.dart';
 import 'package:mobile_scanner/src/mobile_scanner_platform_interface.dart';
@@ -31,8 +32,7 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   Stream<Map<Object?, Object?>>? _eventsStream;
 
   Stream<Map<Object?, Object?>> get eventsStream {
-    _eventsStream ??=
-        eventChannel.receiveBroadcastStream().cast<Map<Object?, Object?>>();
+    _eventsStream ??= eventChannel.receiveBroadcastStream().cast<Map<Object?, Object?>>();
 
     return _eventsStream!;
   }
@@ -51,8 +51,7 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
       return null;
     }
 
-    final List<Map<Object?, Object?>> barcodes =
-        data.cast<Map<Object?, Object?>>();
+    final List<Map<Object?, Object?>> barcodes = data.cast<Map<Object?, Object?>>();
 
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       return BarcodeCapture(
@@ -109,8 +108,7 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
         // So if the permission was denied, request it again.
         case MobileScannerAuthorizationState.denied:
         case MobileScannerAuthorizationState.undetermined:
-          final bool permissionGranted =
-              await methodChannel.invokeMethod<bool>('request') ?? false;
+          final bool permissionGranted = await methodChannel.invokeMethod<bool>('request') ?? false;
 
           if (!permissionGranted) {
             throw const MobileScannerException(
@@ -153,9 +151,22 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   }
 
   @override
+  Stream<RecordState> get recordStateStream {
+    return eventsStream
+        .where((event) => event['name'] == 'recordState')
+        .map((event) => RecordState.fromRawValue(event['data'] as int? ?? 0));
+  }
+
+  @override
+  Stream<String> get recordFileStream {
+    return eventsStream
+        .where((event) => event['name'] == 'file')
+        .map((event) => event['data']! as String? ?? "");
+  }
+
+  @override
   Future<BarcodeCapture?> analyzeImage(String path) async {
-    final Map<String, Object?>? result =
-        await methodChannel.invokeMapMethod<String, Object?>(
+    final Map<String, Object?>? result = await methodChannel.invokeMapMethod<String, Object?>(
       'analyzeImage',
       path,
     );
@@ -188,8 +199,7 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
       throw const MobileScannerException(
         errorCode: MobileScannerErrorCode.controllerAlreadyInitialized,
         errorDetails: MobileScannerErrorDetails(
-          message:
-              'The scanner was already started. Call stop() before calling start() again.',
+          message: 'The scanner was already started. Call stop() before calling start() again.',
         ),
       );
     }
@@ -241,8 +251,7 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
       startResult['currentTorchState'] as int? ?? -1,
     );
 
-    final Map<Object?, Object?>? sizeInfo =
-        startResult['size'] as Map<Object?, Object?>?;
+    final Map<Object?, Object?>? sizeInfo = startResult['size'] as Map<Object?, Object?>?;
     final double? width = sizeInfo?['width'] as double?;
     final double? height = sizeInfo?['height'] as double?;
 
@@ -298,5 +307,15 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   @override
   Future<void> dispose() async {
     await stop();
+  }
+
+  @override
+  Future<void> startRecording() async {
+    await methodChannel.invokeMethod<void>('startRecording');
+  }
+
+  @override
+  Future<void> stopRecording() async {
+    await methodChannel.invokeMethod<void>('stopRecording');
   }
 }

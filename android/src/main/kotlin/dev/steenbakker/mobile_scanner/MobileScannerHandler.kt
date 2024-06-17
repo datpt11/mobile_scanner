@@ -4,6 +4,7 @@ import android.app.Activity
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -17,6 +18,7 @@ import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.view.TextureRegistry
 import java.io.File
+import java.lang.Error
 
 class MobileScannerHandler(
     private val activity: Activity,
@@ -77,9 +79,22 @@ class MobileScannerHandler(
         // Off = 0, On = 1
         barcodeHandler.publishEvent(mapOf("name" to "torchState", "data" to state))
     }
+    private val recordStateCallback: RecordStateCallback = {state: Int ->
+        // Off = 0, On = 1
+        barcodeHandler.publishEvent(mapOf("name" to "recordState", "data" to state))
+    }
 
     private val zoomScaleStateCallback: ZoomScaleStateCallback = {zoomScale: Double ->
         barcodeHandler.publishEvent(mapOf("name" to "zoomScaleState", "data" to zoomScale))
+    }
+
+    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, _: Int? ->
+        if (url != null) {
+            barcodeHandler.publishEvent(mapOf("name" to "file", "data" to url))
+        } else {
+            Log.d("", "Video recording error")
+        }
+
     }
 
     init {
@@ -125,6 +140,8 @@ class MobileScannerHandler(
             "stop" -> stop(result)
             "toggleTorch" -> toggleTorch(result)
             "analyzeImage" -> analyzeImage(call, result)
+            "startRecording" -> startRecording(call, result)
+            "stopRecording" -> stopRecording(call, result)
             "setScale" -> setScale(call, result)
             "resetScale" -> resetScale(result)
             "updateScanWindow" -> updateScanWindow(call, result)
@@ -243,6 +260,13 @@ class MobileScannerHandler(
         val uri = Uri.fromFile(File(call.arguments.toString()))
 
         mobileScanner!!.analyzeImage(uri, analyzeImageSuccessCallback, analyzeImageErrorCallback)
+    }
+
+    private fun startRecording(call: MethodCall, result: MethodChannel.Result) {
+        mobileScanner?.startRecording(recordStateCallback, videoRecordCompletionCallback);
+    }
+    private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {
+        mobileScanner?.stopRecording(recordStateCallback)
     }
 
     private fun toggleTorch(result: MethodChannel.Result) {

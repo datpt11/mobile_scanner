@@ -59,6 +59,15 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
             barcodeHandler.publishEvent(["name": "torchState", "data": torchState])
         }, zoomScaleChangeCallback: { zoomScale in
             barcodeHandler.publishEvent(["name": "zoomScaleState", "data": zoomScale])
+        }, recordStateChangeCallback: { isRecording in
+            barcodeHandler.publishEvent(["name": "isRecording", "data": isRecording])
+        }, videoRecordCompletionCallback: { (url, error)  in
+            guard let url = url else {
+                print(error ?? "Video recording error")
+                return 
+            }
+            barcodeHandler.publishEvent(["name": "file", "data": url.path])
+         
         })
         self.barcodeHandler = barcodeHandler
         super.init()
@@ -90,6 +99,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
             resetScale(call, result)
         case "updateScanWindow":
             updateScanWindow(call, result)
+        case "startRecording":
+           startRecording(call, result)
+        case "stopRecording":
+           stopRecording(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -265,5 +278,19 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
                 }
             }
         })
+    }
+    private func startRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        do {
+           try mobileScanner.startRecording()
+        } catch {
+            result(FlutterError(code: "ASSET_WRITER_ERROR", message: "Error creating AVAssetWriter", details: error.localizedDescription))
+        }
+    }
+    private func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        do {
+            try mobileScanner.stopRecording()
+        } catch {
+            result(FlutterError(code: "FILE_ERROR", message: "Error stopping recording", details: nil))
+        }
     }
 }

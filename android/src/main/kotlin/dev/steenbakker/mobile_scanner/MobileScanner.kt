@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.WindowManager
@@ -24,6 +25,8 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.Recorder
+import androidx.camera.video.VideoCapture
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -35,7 +38,11 @@ import dev.steenbakker.mobile_scanner.objects.MobileScannerStartParameters
 import dev.steenbakker.mobile_scanner.utils.YuvToRgbConverter
 import io.flutter.view.TextureRegistry
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.math.roundToInt
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoRecordEvent
 
 
 class MobileScanner(
@@ -60,7 +67,9 @@ class MobileScanner(
     private var detectionSpeed: DetectionSpeed = DetectionSpeed.NO_DUPLICATES
     private var detectionTimeout: Long = 250
     private var returnImage = false
-
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private lateinit var outputDirectory: File
+    private var currentRecording: Recording? = null
     /**
      * callback for the camera. Every frame is passed through this function.
      */
@@ -248,6 +257,7 @@ class MobileScanner(
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(activity)
         val executor = ContextCompat.getMainExecutor(activity)
+        outputDirectory = getOutputDirectory(activity.applicationContext)
 
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
@@ -332,12 +342,15 @@ class MobileScanner(
             }
 
             val analysis = analysisBuilder.build().apply { setAnalyzer(executor, captureOutput) }
-
+            videoCapture = VideoCapture.withOutput(Recorder.Builder()
+                .setExecutor(executor)
+                .build())
             try {
                 camera = cameraProvider?.bindToLifecycle(
                     activity as LifecycleOwner,
                     cameraPosition,
                     preview,
+                    videoCapture,
                     analysis
                 )
             } catch(exception: Exception) {
@@ -392,6 +405,50 @@ class MobileScanner(
         }, executor)
 
     }
+
+    fun startRecording(recordStateCallback: RecordStateCallback, videoRecordCompletionCallback: VideoRecordCompletionCallback) {
+        val videoFile = File(outputDirectory, "${System.currentTimeMillis()}.mp4")
+        val outputOptions = FileOutputOptions.Builder(videoFile).build()
+        val recording = videoCapture?.output?.prepareRecording(activity.applicationContext, outputOptions)?.apply {
+            withAudioEnabled()
+        }?.start(ContextCompat.getMainExecutor(activity.applicationContext)) { recordEvent ->
+            Log.d("startRecording", "${recordEvent is VideoRecordEvent.Status}")
+            when (recordEvent) {
+                is VideoRecordEvent.Start -> {
+                    Log.d("TAG", "Video recording started")
+                    recordStateCallback(1)
+                }
+                is VideoRecordEvent.Finalize -> {
+                    if (recordEvent.hasError()) {
+                        Log.e("TAG", "Video recording error: ${recordEvent.error}")
+//                        result.error("VIDEO_RECORDING_ERROR", recordEvent.error.toString(), null)
+                        videoRecordCompletionCallback(null, recordEvent.error)
+                    } else {
+                        Log.d("TAG", "Video recording succeeded: ${recordEvent.outputResults.outputUri}")
+                        recordEvent.outputResults.outputUri.path?.let {
+                            videoRecordCompletionCallback(
+                                it, null)
+                        }
+//                        result.success(recordEvent.outputResults.outputUri.toString())
+                    }
+                }
+            }
+        }
+        currentRecording = recording
+    }
+
+    fun stopRecording(recordStateCallback: RecordStateCallback) {
+        currentRecording?.stop()
+        recordStateCallback(0)
+    }
+
+    private fun getOutputDirectory(context: Context): File {
+        val mediaDir = context.getExternalFilesDir(null)?.let {
+            File(it, "878").apply { mkdirs() }
+        }
+        return if (mediaDir != null && mediaDir.exists()) mediaDir else context.filesDir
+    }
+
     /**
      * Stop barcode scanning.
      */

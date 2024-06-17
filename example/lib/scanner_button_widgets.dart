@@ -175,3 +175,40 @@ class ToggleFlashlightButton extends StatelessWidget {
     );
   }
 }
+
+class RecordingButton extends StatelessWidget {
+  const RecordingButton({required this.controller, super.key});
+
+  final MobileScannerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder(
+      valueListenable: controller,
+      builder: (context, state, child) {
+        if (!state.isInitialized || !state.isRunning) {
+          return const SizedBox.shrink();
+        }
+        print(state.recordState);
+        if (state.recordState == RecordState.on) {
+          return IconButton(
+            color: Colors.white,
+            iconSize: 32.0,
+            icon: const Icon(Icons.video_call),
+            onPressed: () async {
+              await controller.stopRecording();
+            },
+          );
+        }
+        return IconButton(
+          color: Colors.white,
+          iconSize: 32.0,
+          icon: const Icon(Icons.missed_video_call_outlined),
+          onPressed: () async {
+            await controller.startRecording();
+          },
+        );
+      },
+    );
+  }
+}

@@ -12,10 +12,16 @@ import MLKitVision
 import MLKitBarcodeScanning
 
 typealias MobileScannerCallback = ((Array<Barcode>?, Error?, UIImage) -> ())
+typealias RecordingStateChangeCallback = ((Int) -> ())
 typealias TorchModeChangeCallback = ((Int?) -> ())
 typealias ZoomScaleChangeCallback = ((Double?) -> ())
+typealias VideoRecordCompletionCallback = ((URL?, Error?) -> Void)
 
-public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, FlutterTexture {
+public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureFileOutputRecordingDelegate, FlutterTexture {
+    public func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: (any Error)?) {
+        self.videoRecordCompletionCallback(outputFileURL, error)
+    }
+    
     /// Capture session of the camera
     var captureSession: AVCaptureSession?
 
@@ -39,6 +45,10 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     /// When zoom scale is changes, this callback will be called
     let zoomScaleChangeCallback: ZoomScaleChangeCallback
+    
+    let recordStateChangeCallback: RecordingStateChangeCallback
+    
+    let videoRecordCompletionCallback: VideoRecordCompletionCallback
 
     /// If provided, the Flutter registry will be used to send the output of the CaptureOutput to a Flutter texture.
     private let registry: FlutterTextureRegistry?
@@ -60,12 +70,26 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var imagesCurrentlyBeingProcessed = false
     
     public var timeoutSeconds: Double = 0
+    
+    public enum OutputType {
+        case photo
+        case video
+    }
+    
+    var videoOutput: AVCaptureMovieFileOutput?
+    
+    var assetWriter: AVAssetWriter?
+    var assetWriterInput: AVAssetWriterInput?
+    var outputFilePath: String?
+    var isRecording = false
 
-    init(registry: FlutterTextureRegistry?, mobileScannerCallback: @escaping MobileScannerCallback, torchModeChangeCallback: @escaping TorchModeChangeCallback, zoomScaleChangeCallback: @escaping ZoomScaleChangeCallback) {
+    init(registry: FlutterTextureRegistry?, mobileScannerCallback: @escaping MobileScannerCallback, torchModeChangeCallback: @escaping TorchModeChangeCallback, zoomScaleChangeCallback: @escaping ZoomScaleChangeCallback, recordStateChangeCallback: @escaping RecordingStateChangeCallback, videoRecordCompletionCallback: @escaping VideoRecordCompletionCallback) {
         self.registry = registry
         self.mobileScannerCallback = mobileScannerCallback
         self.torchModeChangeCallback = torchModeChangeCallback
         self.zoomScaleChangeCallback = zoomScaleChangeCallback
+        self.recordStateChangeCallback = recordStateChangeCallback
+        self.videoRecordCompletionCallback = videoRecordCompletionCallback
         super.init()
     }
 
@@ -132,7 +156,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         }
         latestBuffer = imageBuffer
         registry?.textureFrameAvailable(textureId)
-        
+       
         let currentTime = Date().timeIntervalSince1970
         let eligibleForScan = currentTime > nextScanTime && !imagesCurrentlyBeingProcessed
         
@@ -243,6 +267,10 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             if cameraPosition == .front && connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = true
             }
+        }
+        self.videoOutput = AVCaptureMovieFileOutput()
+        if captureSession!.canAddOutput(self.videoOutput!) {
+            captureSession!.addOutput(self.videoOutput!)
         }
         captureSession!.commitConfiguration()
 
@@ -355,6 +383,30 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             device.torchMode = newTorchMode
             device.unlockForConfiguration()
         } catch(_) {}
+    }
+    
+    func startRecording() {
+        DispatchQueue.global(qos: .background).async {
+            guard let captureSession = self.captureSession, captureSession.isRunning else {
+                return
+            }
+            
+            let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            let fileUrl = paths[0].appendingPathComponent("output.mp4")
+            try? FileManager.default.removeItem(at: fileUrl)
+            self.videoOutput!.startRecording(to: fileUrl, recordingDelegate: self)
+            self.recordStateChangeCallback(1)
+        }
+    }
+    
+    func stopRecording() {
+        DispatchQueue.global(qos: .background).async {
+            guard let captureSession = self.captureSession, captureSession.isRunning else {
+                return
+            }
+            self.videoOutput?.stopRecording()
+            self.recordStateChangeCallback(0)
+        }
     }
     
     /// Turn the torch on.

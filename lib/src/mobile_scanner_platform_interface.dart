@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:mobile_scanner/src/enums/record_state.dart';
 import 'package:mobile_scanner/src/enums/torch_state.dart';
 import 'package:mobile_scanner/src/method_channel/mobile_scanner_method_channel.dart';
 import 'package:mobile_scanner/src/mobile_scanner_view_attributes.dart';
@@ -36,6 +37,14 @@ abstract class MobileScannerPlatform extends PlatformInterface {
   /// Get the stream of torch state changes.
   Stream<TorchState> get torchStateStream {
     throw UnimplementedError('torchStateStream has not been implemented.');
+  }
+
+  Stream<RecordState> get recordStateStream {
+    throw UnimplementedError('recordStateStream has not been implemented.');
+  }
+
+  Stream<String> get recordFileStream {
+    throw UnimplementedError('recordFileStream has not been implemented.');
   }
 
   /// Get the stream of zoom scale changes.
@@ -107,5 +116,15 @@ abstract class MobileScannerPlatform extends PlatformInterface {
   /// Dispose of this [MobileScannerPlatform] instance.
   Future<void> dispose() {
     throw UnimplementedError('dispose() has not been implemented.');
+  }
+
+  /// Start recording of this [MobileScannerPlatform] instance.
+  Future<void> startRecording() {
+    throw UnimplementedError('startRecording() has not been implemented.');
+  }
+
+  /// Stop recording of this [MobileScannerPlatform] instance.
+  Future<void> stopRecording() {
+    throw UnimplementedError('stopRecording() has not been implemented.');
   }
 }

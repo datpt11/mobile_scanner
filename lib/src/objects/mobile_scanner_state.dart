@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:mobile_scanner/src/enums/camera_facing.dart';
+import 'package:mobile_scanner/src/enums/record_state.dart';
 import 'package:mobile_scanner/src/enums/torch_state.dart';
 import 'package:mobile_scanner/src/mobile_scanner_exception.dart';
 
@@ -15,6 +16,7 @@ class MobileScannerState {
     required this.size,
     required this.torchState,
     required this.zoomScale,
+    required this.recordState,
     this.error,
   });
 
@@ -25,6 +27,7 @@ class MobileScannerState {
           cameraDirection: facing,
           isInitialized: false,
           isRunning: false,
+          recordState: RecordState.unavailable,
           size: Size.zero,
           torchState: TorchState.unavailable,
           zoomScale: 1.0,
@@ -51,6 +54,9 @@ class MobileScannerState {
   /// This is `true` if the camera is active.
   final bool isRunning;
 
+  /// This is `true` if the camera is recording.
+  final RecordState recordState;
+
   /// The size of the camera output.
   final Size size;
 
@@ -67,6 +73,7 @@ class MobileScannerState {
     MobileScannerException? error,
     bool? isInitialized,
     bool? isRunning,
+    RecordState? recordState,
     Size? size,
     TorchState? torchState,
     double? zoomScale,
@@ -77,6 +84,7 @@ class MobileScannerState {
       error: error,
       isInitialized: isInitialized ?? this.isInitialized,
       isRunning: isRunning ?? this.isRunning,
+      recordState: recordState ?? this.recordState,
       size: size ?? this.size,
       torchState: torchState ?? this.torchState,
       zoomScale: zoomScale ?? this.zoomScale,
