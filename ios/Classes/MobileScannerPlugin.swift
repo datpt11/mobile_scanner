@@ -5,21 +5,21 @@ import AVFoundation
 import UIKit
 
 public class MobileScannerPlugin: NSObject, FlutterPlugin {
-    
+
     /// The mobile scanner object that handles all logic
     private let mobileScanner: MobileScanner
-    
+
     /// The handler sends all information via an event channel back to Flutter
     private let barcodeHandler: BarcodeHandler
 
     /// The points for the scan window.
     static var scanWindow: [CGFloat]?
-    
+
     private static func isBarcodeInScanWindow(barcode: Barcode, imageSize: CGSize) -> Bool {
         let scanwindow = MobileScannerPlugin.scanWindow!
         let barcodeminX = barcode.cornerPoints![0].cgPointValue.x
         let barcodeminY = barcode.cornerPoints![1].cgPointValue.y
-        
+
         let barcodewidth = barcode.cornerPoints![2].cgPointValue.x - barcodeminX
         let barcodeheight = barcode.cornerPoints![3].cgPointValue.y - barcodeminY
         let barcodeBox = CGRect(x: barcodeminX, y: barcodeminY, width: barcodewidth, height: barcodeheight)
@@ -31,10 +31,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
         let height = (scanwindow[3] * imageSize.height) - minY
 
         let scaledWindow =  CGRect(x: minX, y: minY, width: width, height: height)
-        
+
         return scaledWindow.contains(barcodeBox)
     }
-    
+
     init(barcodeHandler: BarcodeHandler, registry: FlutterTextureRegistry) {
         self.mobileScanner = MobileScanner(registry: registry, mobileScannerCallback: { barcodes, error, image in
             if barcodes != nil {
@@ -64,15 +64,15 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
         }, videoRecordCompletionCallback: { (url, error)  in
             guard let url = url else {
                 print(error ?? "Video recording error")
-                return 
+                return
             }
             barcodeHandler.publishEvent(["name": "file", "data": url.path])
-         
+
         })
         self.barcodeHandler = barcodeHandler
         super.init()
     }
-    
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "dev.steenbakker.mobile_scanner/scanner/method", binaryMessenger: registrar.messenger())
         let instance = MobileScannerPlugin(barcodeHandler: BarcodeHandler(registrar: registrar), registry: registrar.textures())
@@ -174,7 +174,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
         mobileScanner.toggleTorch()
         result(nil)
     }
-    
+
     /// Sets the zoomScale.
     private func setScale(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let scale = call.arguments as? CGFloat
@@ -229,7 +229,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
 
         result(nil)
     }
-    
+
     static func arrayToRect(scanWindowData: [CGFloat]?) -> CGRect? {
         if (scanWindowData == nil) {
             return nil
@@ -243,11 +243,11 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
 
         return CGRect(x: minX, y: minY, width: width, height: height)
     }
-    
+
     /// Analyzes a single image.
     private func analyzeImage(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let uiImage = UIImage(contentsOfFile: call.arguments as? String ?? "")
-        
+
         if (uiImage == nil) {
             result(FlutterError(code: "MobileScanner",
                                 message: "No image found in analyzeImage!",
@@ -262,17 +262,17 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
                                         message: error?.localizedDescription,
                                         details: nil))
                 }
-                
+
                 return
             }
-            
+
             if (barcodes == nil || barcodes!.isEmpty) {
                 DispatchQueue.main.async {
                     result(nil)
                 }
             } else {
                 let barcodesMap: [Any?] = barcodes!.compactMap { barcode in barcode.data }
-                
+
                 DispatchQueue.main.async {
                     result(["name": "barcode", "data": barcodesMap])
                 }

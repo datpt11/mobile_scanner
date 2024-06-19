@@ -129,7 +129,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   }
 
   void _setupListeners() {
-    _barcodesSubscription =
+    _barcodesSubscription ??=
         MobileScannerPlatform.instance.barcodesStream.listen((BarcodeCapture? barcode) {
       if (_barcodesController.isClosed || barcode == null) {
         return;
@@ -138,7 +138,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       _barcodesController.add(barcode);
     });
 
-    _torchStateSubscription =
+    _torchStateSubscription ??=
         MobileScannerPlatform.instance.torchStateStream.listen((TorchState torchState) {
       if (_isDisposed) {
         return;
@@ -147,7 +147,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       value = value.copyWith(torchState: torchState);
     });
 
-    _recordingSubscription =
+    _recordingSubscription ??=
         MobileScannerPlatform.instance.recordStateStream.listen((RecordState recordState) {
       if (_isDisposed) {
         return;
@@ -156,7 +156,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       value = value.copyWith(recordState: recordState);
     });
 
-    _zoomScaleSubscription =
+    _zoomScaleSubscription ??=
         MobileScannerPlatform.instance.zoomScaleStateStream.listen((double zoomScale) {
       if (_isDisposed) {
         return;
@@ -165,7 +165,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       value = value.copyWith(zoomScale: zoomScale);
     });
 
-    _recordFileSubscription =
+    _recordFileSubscription ??=
         MobileScannerPlatform.instance.recordFileStream.listen((String? file) {
       if (_recordFileController.isClosed || file == null) {
         return;
@@ -351,6 +351,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     _disposeListeners();
 
     final TorchState oldTorchState = value.torchState;
+    final RecordState oldRecordState = value.recordState;
 
     // After the camera stopped, set the torch state to off,
     // as the torch state callback is never called when the camera is stopped.
@@ -358,6 +359,8 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     value = value.copyWith(
       isRunning: false,
       torchState: oldTorchState == TorchState.unavailable ? TorchState.unavailable : TorchState.off,
+      recordState:
+          oldRecordState == RecordState.unavailable ? RecordState.unavailable : RecordState.off,
     );
 
     await MobileScannerPlatform.instance.stop();
