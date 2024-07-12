@@ -13,6 +13,7 @@ import 'package:mobile_scanner/src/mobile_scanner_platform_interface.dart';
 import 'package:mobile_scanner/src/mobile_scanner_view_attributes.dart';
 import 'package:mobile_scanner/src/objects/barcode.dart';
 import 'package:mobile_scanner/src/objects/barcode_capture.dart';
+import 'package:mobile_scanner/src/objects/record_file.dart';
 import 'package:mobile_scanner/src/objects/start_options.dart';
 
 /// An implementation of [MobileScannerPlatform] that uses method channels.
@@ -158,10 +159,12 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   }
 
   @override
-  Stream<String> get recordFileStream {
-    return eventsStream
-        .where((event) => event['name'] == 'file')
-        .map((event) => event['data']! as String? ?? "");
+  Stream<RecordFile> get recordFileStream {
+    return eventsStream.where((event) => event['name'] == 'file').map(
+      (event) {
+        return RecordFile(file: event['data']! as String? ?? "", id: event["id"] as String? ?? "");
+      },
+    );
   }
 
   @override
@@ -310,12 +313,12 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   }
 
   @override
-  Future<void> startRecording() async {
-    await methodChannel.invokeMethod<void>('startRecording');
+  Future<void> startRecording({String? id}) async {
+    await methodChannel.invokeMethod<void>('startRecording', {"id": id});
   }
 
   @override
-  Future<void> stopRecording() async {
-    await methodChannel.invokeMethod<void>('stopRecording');
+  Future<void> stopRecording({String? id}) async {
+    await methodChannel.invokeMethod<void>('stopRecording', {"id": id});
   }
 }

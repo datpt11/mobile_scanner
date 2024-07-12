@@ -12,6 +12,7 @@ import 'package:mobile_scanner/src/mobile_scanner_platform_interface.dart';
 import 'package:mobile_scanner/src/mobile_scanner_view_attributes.dart';
 import 'package:mobile_scanner/src/objects/barcode_capture.dart';
 import 'package:mobile_scanner/src/objects/mobile_scanner_state.dart';
+import 'package:mobile_scanner/src/objects/record_file.dart';
 import 'package:mobile_scanner/src/objects/start_options.dart';
 
 /// The controller for the [MobileScanner] widget.
@@ -100,17 +101,17 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   /// The internal barcode controller, that listens for detected barcodes.
   final StreamController<BarcodeCapture> _barcodesController = StreamController.broadcast();
 
-  final StreamController<String> _recordFileController = StreamController.broadcast();
+  final StreamController<RecordFile> _recordFileController = StreamController.broadcast();
 
   /// Get the stream of scanned barcodes.
   Stream<BarcodeCapture> get barcodes => _barcodesController.stream;
-  Stream<String> get recordFile => _recordFileController.stream;
+  Stream<RecordFile> get recordFile => _recordFileController.stream;
 
   StreamSubscription<BarcodeCapture?>? _barcodesSubscription;
   StreamSubscription<TorchState>? _torchStateSubscription;
   StreamSubscription<double>? _zoomScaleSubscription;
   StreamSubscription<RecordState>? _recordingSubscription;
-  StreamSubscription<String>? _recordFileSubscription;
+  StreamSubscription<RecordFile>? _recordFileSubscription;
 
   bool _isDisposed = false;
 
@@ -166,7 +167,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     });
 
     _recordFileSubscription ??=
-        MobileScannerPlatform.instance.recordFileStream.listen((String? file) {
+        MobileScannerPlatform.instance.recordFileStream.listen((RecordFile? file) {
       if (_recordFileController.isClosed || file == null) {
         return;
       }
@@ -417,7 +418,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     await MobileScannerPlatform.instance.toggleTorch();
   }
 
-  Future<void> startRecording() async {
+  Future<void> startRecording({String? id}) async {
     _throwIfNotInitialized();
 
     if (!value.isRunning) {
@@ -428,10 +429,10 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     if (recordState == RecordState.on) {
       return;
     }
-    await MobileScannerPlatform.instance.startRecording();
+    await MobileScannerPlatform.instance.startRecording(id: id);
   }
 
-  Future<void> stopRecording() async {
+  Future<void> stopRecording({String? id}) async {
     _throwIfNotInitialized();
 
     if (!value.isRunning) {
@@ -442,7 +443,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     if (recordState == RecordState.off || recordState == RecordState.unavailable) {
       return;
     }
-    await MobileScannerPlatform.instance.stopRecording();
+    await MobileScannerPlatform.instance.stopRecording(id: id);
   }
 
   /// Update the scan window with the given [window] rectangle.

@@ -61,12 +61,12 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
             barcodeHandler.publishEvent(["name": "zoomScaleState", "data": zoomScale])
         }, recordStateChangeCallback: { isRecording in
             barcodeHandler.publishEvent(["name": "recordState", "data": isRecording])
-        }, videoRecordCompletionCallback: { (url, error)  in
+        }, videoRecordCompletionCallback: { (url, id, error)  in
             guard let url = url else {
                 print(error ?? "Video recording error")
                 return
             }
-            barcodeHandler.publishEvent(["name": "file", "data": url.path])
+            barcodeHandler.publishEvent(["name": "file", "data": url.path, "id": id])
 
         })
         self.barcodeHandler = barcodeHandler
@@ -288,7 +288,8 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
     }
     private func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         do {
-            try mobileScanner.stopRecording()
+            let id: String? = (call.arguments as! Dictionary<String, Any?>)["id"] as? String? ?? nil
+            try mobileScanner.stopRecording(id: id)
         } catch {
             result(FlutterError(code: "FILE_ERROR", message: "Error stopping recording", details: nil))
         }

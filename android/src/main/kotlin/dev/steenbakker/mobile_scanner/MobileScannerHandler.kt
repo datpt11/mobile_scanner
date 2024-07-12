@@ -263,6 +263,7 @@ class MobileScannerHandler(
     }
 
     private fun startRecording(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String?>("id")
         mobileScanner?.startRecording(recordStateCallback, videoRecordCompletionCallback);
     }
     private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {

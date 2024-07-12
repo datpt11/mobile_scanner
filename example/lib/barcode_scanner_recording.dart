@@ -28,8 +28,9 @@ class _BarcodeScannerWithRecordingState extends State<BarcodeScannerWithRecordin
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _subscription = controller.recordFile.listen((String? file) async {
-      _videoPlayerController = VideoPlayerController.file(File(file.toString()));
+    _subscription = controller.recordFile.listen((recordFile) async {
+      print(recordFile.id);
+      _videoPlayerController = VideoPlayerController.file(File(recordFile.file.toString()));
       _videoPlayerController.initialize().then(
             (value) => setState(
               () => _chewieController = ChewieController(

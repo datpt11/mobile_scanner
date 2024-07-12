@@ -15,12 +15,9 @@ typealias MobileScannerCallback = ((Array<Barcode>?, Error?, UIImage) -> ())
 typealias RecordingStateChangeCallback = ((Int) -> ())
 typealias TorchModeChangeCallback = ((Int?) -> ())
 typealias ZoomScaleChangeCallback = ((Double?) -> ())
-typealias VideoRecordCompletionCallback = ((URL?, Error?) -> Void)
+typealias VideoRecordCompletionCallback = ((URL?, String?, Error?) -> Void)
 
-public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureFileOutputRecordingDelegate, FlutterTexture, AVCaptureAudioDataOutputSampleBufferDelegate {
-    public func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: (any Error)?) {
-        self.videoRecordCompletionCallback(outputFileURL, error)
-    }
+public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, FlutterTexture, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     /// Capture session of the camera
     var captureSession: AVCaptureSession?
@@ -483,7 +480,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         self.recordStateChangeCallback(1)
     }
 
-    func stopRecording() {
+    func stopRecording(id: String?) {
         DispatchQueue.global(qos: .background).async {
             guard let captureSession = self.captureSession, captureSession.isRunning else {
                 return
@@ -493,7 +490,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             self.videoWriter.finishWriting { [weak self] in
                 self?.sessionAtSourceTime = nil
                 guard let url = self?.videoWriter.outputURL else { return }
-                self?.videoRecordCompletionCallback(url, self?.videoWriter.error)
+                self?.videoRecordCompletionCallback(url, id, self?.videoWriter.error)
             }
             self.recordStateChangeCallback(0)
         }

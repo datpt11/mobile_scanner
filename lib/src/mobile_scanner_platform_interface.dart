@@ -4,6 +4,7 @@ import 'package:mobile_scanner/src/enums/torch_state.dart';
 import 'package:mobile_scanner/src/method_channel/mobile_scanner_method_channel.dart';
 import 'package:mobile_scanner/src/mobile_scanner_view_attributes.dart';
 import 'package:mobile_scanner/src/objects/barcode_capture.dart';
+import 'package:mobile_scanner/src/objects/record_file.dart';
 import 'package:mobile_scanner/src/objects/start_options.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -43,7 +44,7 @@ abstract class MobileScannerPlatform extends PlatformInterface {
     throw UnimplementedError('recordStateStream has not been implemented.');
   }
 
-  Stream<String> get recordFileStream {
+  Stream<RecordFile> get recordFileStream {
     throw UnimplementedError('recordFileStream has not been implemented.');
   }
 
@@ -119,12 +120,12 @@ abstract class MobileScannerPlatform extends PlatformInterface {
   }
 
   /// Start recording of this [MobileScannerPlatform] instance.
-  Future<void> startRecording() {
+  Future<void> startRecording({String? id}) {
     throw UnimplementedError('startRecording() has not been implemented.');
   }
 
   /// Stop recording of this [MobileScannerPlatform] instance.
-  Future<void> stopRecording() {
+  Future<void> stopRecording({String? id}) {
     throw UnimplementedError('stopRecording() has not been implemented.');
   }
 }

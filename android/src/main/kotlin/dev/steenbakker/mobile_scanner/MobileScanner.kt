@@ -406,7 +406,7 @@ class MobileScanner(
 
     }
 
-    fun startRecording(recordStateCallback: RecordStateCallback, videoRecordCompletionCallback: VideoRecordCompletionCallback) {
+    fun startRecording(id: String?, recordStateCallback: RecordStateCallback, videoRecordCompletionCallback: VideoRecordCompletionCallback) {
         val videoFile = File(outputDirectory, "${System.currentTimeMillis()}.mp4")
         val outputOptions = FileOutputOptions.Builder(videoFile).build()
         val recording = videoCapture?.output?.prepareRecording(activity.applicationContext, outputOptions)?.apply {
@@ -421,12 +421,12 @@ class MobileScanner(
                     if (recordEvent.hasError()) {
                         Log.e("TAG", "Video recording error: ${recordEvent.error}")
 //                        result.error("VIDEO_RECORDING_ERROR", recordEvent.error.toString(), null)
-                        videoRecordCompletionCallback(null, recordEvent.error)
+                        videoRecordCompletionCallback(null, id, recordEvent.error)
                     } else {
                         Log.d("TAG", "Video recording succeeded: ${recordEvent.outputResults.outputUri}")
                         recordEvent.outputResults.outputUri.path?.let {
                             videoRecordCompletionCallback(
-                                it, null)
+                                it, id, null)
                         }
 //                        result.success(recordEvent.outputResults.outputUri.toString())
                     }
