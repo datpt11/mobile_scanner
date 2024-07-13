@@ -1,6 +1,29 @@
 ## 5.1.1
 * This release fixes an issue with automatic starts in the examples.
 
+## 1.0.0 (2024-07-13)
+
+
+### Features
+
+* add available camera information in startcallback on android ([133f5c2](https://github.com/datpt11/mobile_scanner/commit/133f5c23d95ca5b3759f59a5e0eaf50ac61a7395))
+* add new resolution selector with parameter for android ([240a374](https://github.com/datpt11/mobile_scanner/commit/240a374851034ff00e4702a1795ce48dc20efd20))
+* change platform os detect pattern in barcode_scanner_window.dart ([bf495be](https://github.com/datpt11/mobile_scanner/commit/bf495be9510eb60076734a618b92d1e7dab81d4e))
+* record stream when scan ([bb2bcdc](https://github.com/datpt11/mobile_scanner/commit/bb2bcdc28154febeef516f9320580095862a7415))
+* Update CHANGELOG.md for version 5.0.1 ([2899853](https://github.com/datpt11/mobile_scanner/commit/289985393d1b58d42f8fadb61b1a8cd1937253e1))
+* Update extension type ([f31b03d](https://github.com/datpt11/mobile_scanner/commit/f31b03dcfb46ff4610f9c4941fe1d266a44cf200))
+* Update pubspec.yaml for version 5.0.1 ([2a6c7d5](https://github.com/datpt11/mobile_scanner/commit/2a6c7d569c3ff17d37e95679553605fabe77464d))
+
+
+### Bug Fixes
+
+* record screen ios 12 ([52e4b9d](https://github.com/datpt11/mobile_scanner/commit/52e4b9d7d393e78d899e98540720b84a402872f4))
+* remove duplicate library ([a59b2b6](https://github.com/datpt11/mobile_scanner/commit/a59b2b61b1a581a13f02bd185ac9b564439b73df))
+* return type 'int' doesn't allow null for zxingBarcodeFormat method ([528feb6](https://github.com/datpt11/mobile_scanner/commit/528feb659b4385bce2c7e5db9898e84ba7923240))
+* spamming code detection with "noDuplicates" detection speed on iOS. ([4ab43db](https://github.com/datpt11/mobile_scanner/commit/4ab43db1ee602252b4a03fd6f060c06ac42bd89e))
+* typo in zxing.dart ([17d3aed](https://github.com/datpt11/mobile_scanner/commit/17d3aed1b793d5628ffba9fd07337d6e2f25990b))
+* with the "noDuplicates" detection speed, the same code is no longer detected after stopping and restarting the scanner. ([4ab43db](https://github.com/datpt11/mobile_scanner/commit/4ab43db1ee602252b4a03fd6f060c06ac42bd89e))
+
 ## 5.1.0
 This updates reverts a few breaking changes made in v5.0.0 in order to keep things simple.
 
