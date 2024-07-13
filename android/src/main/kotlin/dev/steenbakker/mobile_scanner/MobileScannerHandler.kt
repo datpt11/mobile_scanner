@@ -88,9 +88,10 @@ class MobileScannerHandler(
         barcodeHandler.publishEvent(mapOf("name" to "zoomScaleState", "data" to zoomScale))
     }
 
-    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, _: Int? ->
+    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, id: String?, _: Int? ->
         if (url != null) {
-            barcodeHandler.publishEvent(mapOf("name" to "file", "data" to url))
+            val id = id ?: ""
+            barcodeHandler.publishEvent(mapOf("name" to "file", "data" to url, "id" to id))
         } else {
             Log.d("", "Video recording error")
         }
@@ -264,7 +265,7 @@ class MobileScannerHandler(
 
     private fun startRecording(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String?>("id")
-        mobileScanner?.startRecording(recordStateCallback, videoRecordCompletionCallback);
+        mobileScanner?.startRecording(id, recordStateCallback, videoRecordCompletionCallback);
     }
     private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {
         mobileScanner?.stopRecording(recordStateCallback)
