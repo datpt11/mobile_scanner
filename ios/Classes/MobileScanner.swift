@@ -446,6 +446,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 AVVideoCompressionPropertiesKey: [
                     AVVideoAverageBitRateKey: 2300000,
                 ],
+                AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
             ])
             videoWriterInput.mediaTimeScale = CMTimeScale(bitPattern: 600)
             videoWriterInput.expectsMediaDataInRealTime = true
