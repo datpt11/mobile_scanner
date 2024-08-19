@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:chewie/chewie.dart';
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,16 @@ class _BarcodeScannerWithRecordingState extends State<BarcodeScannerWithRecordin
 
     _subscription = controller.recordFile.listen((recordFile) async {
       print(recordFile.id);
+      Future<String> getFileSize(String filepath, int decimals) async {
+        final file = File(filepath);
+        final int bytes = await file.length();
+        if (bytes <= 0) return "0 B";
+        const suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+        final i = (log(bytes) / log(1024)).floor();
+        return '${(bytes / pow(1024, i)).toStringAsFixed(decimals)} ${suffixes[i]}';
+      }
+
+      print("${await getFileSize(recordFile.file ?? "", 1)} 233232");
       _videoPlayerController = VideoPlayerController.file(File(recordFile.file.toString()));
       _videoPlayerController.initialize().then(
             (value) => setState(

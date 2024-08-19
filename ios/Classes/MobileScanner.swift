@@ -444,7 +444,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 AVVideoWidthKey: 1080,
                 AVVideoHeightKey: 1920,
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 2300000,
+                    AVVideoAverageBitRateKey: 500000,
                 ],
                 AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
             ])
