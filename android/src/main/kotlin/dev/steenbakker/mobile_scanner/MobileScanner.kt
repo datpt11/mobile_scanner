@@ -41,6 +41,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.roundToInt
 import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
 
@@ -344,6 +346,7 @@ class MobileScanner(
             val analysis = analysisBuilder.build().apply { setAnalyzer(executor, captureOutput) }
             videoCapture = VideoCapture.withOutput(Recorder.Builder()
                 .setExecutor(executor)
+                .setQualitySelector(QualitySelector.from(Quality.SD))
                 .build())
             try {
                 camera = cameraProvider?.bindToLifecycle(
