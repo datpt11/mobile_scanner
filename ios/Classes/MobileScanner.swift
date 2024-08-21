@@ -82,10 +82,10 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         && videoWriter != nil
         && videoWriter.status == .writing
     }
-    
+
     fileprivate lazy var videoDataOutput = AVCaptureVideoDataOutput()
     fileprivate lazy var audioDataOutput = AVCaptureAudioDataOutput()
-    
+
     init(registry: FlutterTextureRegistry?, mobileScannerCallback: @escaping MobileScannerCallback, torchModeChangeCallback: @escaping TorchModeChangeCallback, zoomScaleChangeCallback: @escaping ZoomScaleChangeCallback, recordStateChangeCallback: @escaping RecordingStateChangeCallback, videoRecordCompletionCallback: @escaping VideoRecordCompletionCallback) {
         self.registry = registry
         self.mobileScannerCallback = mobileScannerCallback
@@ -195,7 +195,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 mobileScannerCallback(barcodes, error, ciImage)
             }
         }
-        
+
         guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
 
         let writable = canWrite()
@@ -292,20 +292,20 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         } else {
             print("Could not add video data output")
         }
-        
+
         for connection in self.videoDataOutput.connections {
             connection.videoOrientation = .portrait
             if cameraPosition == .front && connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = true
             }
         }
-        
+
         //Define your audio output
         if captureSession!.canAddOutput(audioDataOutput) {
             audioDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
             captureSession!.addOutput(audioDataOutput)
         }
-        
+
         captureSession!.commitConfiguration()
 
         backgroundQueue.async {
@@ -425,38 +425,38 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 return
             }
 //            self.recordStateChangeCallback(1)
-            
+
             self.setupWriter()
         }
     }
     private var _filename = ""
-    
+
     func setupWriter() {
         do {
             _filename = UUID().uuidString
             let videoPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("\(_filename).mp4")
             //          let url = AssetUtils.outputAssetURL(mediaType: .video)
             videoWriter = try AVAssetWriter(url: videoPath, fileType: AVFileType.mp4)
-            
+
             //Add video input
             videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: [
                 AVVideoCodecKey: AVVideoCodecType.h264,
                 AVVideoWidthKey: 1080,
                 AVVideoHeightKey: 1920,
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 500000,
+                    AVVideoAverageBitRateKey: 1300000,
                 ],
                 AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
             ])
             videoWriterInput.mediaTimeScale = CMTimeScale(bitPattern: 600)
             videoWriterInput.expectsMediaDataInRealTime = true
 //            videoWriterInput.transform = CGAffineTransform(rotationAngle: .pi/2)
-            
+
             videoWriterInput.expectsMediaDataInRealTime = true //Make sure we are exporting data at realtime
             if videoWriter.canAdd(videoWriterInput) {
                 videoWriter.add(videoWriterInput)
             }
-            
+
             //Add audio input
             audioWriterInput = AVAssetWriterInput(mediaType: AVMediaType.audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -468,13 +468,13 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             if videoWriter.canAdd(audioWriterInput) {
                 videoWriter.add(audioWriterInput)
             }
-            
+
             videoWriter.startWriting() //Means ready to write down the file
         }
         catch let error {
             debugPrint(error.localizedDescription)
         }
-        
+
         guard !isRecording else { return }
         isRecording = true
         sessionAtSourceTime = nil
