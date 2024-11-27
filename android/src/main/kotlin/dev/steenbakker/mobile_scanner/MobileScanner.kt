@@ -347,7 +347,7 @@ class MobileScanner(
             videoCapture = VideoCapture.withOutput(Recorder.Builder()
                 .setExecutor(executor)
                 .setQualitySelector(QualitySelector.from(Quality.HD))
-                .setTargetVideoEncodingBitRate(20000)
+                .setTargetVideoEncodingBitRate(50000)
                 .build())
             try {
                 camera = cameraProvider?.bindToLifecycle(
