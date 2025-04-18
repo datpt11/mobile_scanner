@@ -964,7 +964,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                      self?.sessionAtSourceTime = nil
                      guard let url = self?.videoWriter.outputURL else { return }
                      
-                     let event: [String: Any?] = ["name": "file", "data": url.path]
+                     let event: [String: Any?] = ["name": "file", "data": url.path, "id": id]
                      self?.sink?(event)
                  }
                  let event: [String: Any?] = ["name": "recordState", "data": 0]
