@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -91,6 +92,20 @@ class MobileScannerHandler(
         barcodeHandler.publishEvent(mapOf("name" to "zoomScaleState", "data" to zoomScale))
     }
 
+    private val recordStateCallback: RecordStateCallback = {state: Int ->
+        // Off = 0, On = 1
+        barcodeHandler.publishEvent(mapOf("name" to "recordState", "data" to state))
+    }
+
+    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, id: String?, _: Int? ->
+        if (url != null) {
+            val id = id ?: ""
+            barcodeHandler.publishEvent(mapOf("name" to "file", "data" to url, "id" to id))
+        } else {
+            Log.d("", "Video recording error")
+        }
+    }
+
     init {
         methodChannel = MethodChannel(binaryMessenger,
             "dev.steenbakker.mobile_scanner/scanner/method")
@@ -146,6 +161,8 @@ class MobileScannerHandler(
             "start" -> start(call, result)
             "pause" -> pause(result)
             "stop" -> stop(result)
+            "startRecording" -> startRecording(call, result)
+            "stopRecording" -> stopRecording(call, result)
             "toggleTorch" -> toggleTorch(result)
             "analyzeImage" -> analyzeImage(call, result)
             "setScale" -> setScale(call, result)
@@ -296,6 +313,14 @@ class MobileScannerHandler(
             result.error(
                 MobileScannerErrorCodes.GENERIC_ERROR, MobileScannerErrorCodes.INVALID_ZOOM_SCALE_ERROR_MESSAGE, null)
         }
+    }
+
+    private fun startRecording(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String?>("id")
+        mobileScanner?.startRecording(id, recordStateCallback, videoRecordCompletionCallback);
+    }
+    private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {
+        mobileScanner?.stopRecording(recordStateCallback)
     }
 
     private fun setZoomRatio(scale: Float) : Boolean {

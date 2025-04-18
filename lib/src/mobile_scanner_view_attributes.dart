@@ -1,7 +1,6 @@
 import 'dart:ui';
 
-import 'package:mobile_scanner/src/enums/camera_facing.dart';
-import 'package:mobile_scanner/src/enums/torch_state.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 /// This class defines the attributes for the mobile scanner view.
 class MobileScannerViewAttributes {
@@ -11,6 +10,7 @@ class MobileScannerViewAttributes {
     required this.currentTorchMode,
     required this.size,
     this.numberOfCameras,
+    this.currentRecordingState = RecordState.off,
   });
 
   /// The direction of the active camera.
@@ -24,4 +24,7 @@ class MobileScannerViewAttributes {
 
   /// The size of the camera output.
   final Size size;
+
+  /// The current recording state.
+  final RecordState currentRecordingState;
 }
