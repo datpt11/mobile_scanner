@@ -86,8 +86,7 @@ final class _RotatedPreviewState extends State<RotatedPreview> {
       DeviceOrientation.landscapeLeft => 270,
     };
 
-    return (sensorOrientationDegrees - deviceOrientationDegrees * sign + 360) %
-        360;
+    return (sensorOrientationDegrees - deviceOrientationDegrees * sign + 360) % 360;
   }
 
   @override
@@ -95,8 +94,9 @@ final class _RotatedPreviewState extends State<RotatedPreview> {
     super.initState();
 
     deviceOrientation = widget.initialDeviceOrientation;
-    _deviceOrientationSubscription =
-        widget.deviceOrientationStream.listen((DeviceOrientation event) {
+    _deviceOrientationSubscription = widget.deviceOrientationStream.listen((
+      DeviceOrientation event,
+    ) {
       if (!mounted || deviceOrientation == event) {
         return;
       }
@@ -122,9 +122,6 @@ final class _RotatedPreviewState extends State<RotatedPreview> {
       sign: widget.facingSign,
     );
 
-    return RotatedBox(
-      quarterTurns: rotation ~/ 90,
-      child: widget.child,
-    );
+    return RotatedBox(quarterTurns: rotation ~/ 90, child: widget.child);
   }
 }

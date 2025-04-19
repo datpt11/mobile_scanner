@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:mobile_scanner/src/method_channel/android_surface_producer_delegate.dart';
-import 'package:mobile_scanner/src/method_channel/rotated_preview.dart';
 import 'package:mobile_scanner/src/objects/record_file.dart';
 import 'package:mobile_scanner/src/utils/parse_device_orientation_extension.dart';
 
@@ -240,16 +239,16 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
     // correct the preview orientation based on the currently reported device orientation.
     // On Android, the underlying device orientation stream will emit the current orientation
     // when the first listener is attached.
-    if (_surfaceProducerDelegate case final AndroidSurfaceProducerDelegate delegate
-        when !delegate.handlesCropAndRotation) {
-      return RotatedPreview.fromCameraDirection(
-        delegate.cameraFacingDirection,
-        deviceOrientationStream: deviceOrientationChangedStream,
-        initialDeviceOrientation: delegate.initialDeviceOrientation,
-        sensorOrientationDegrees: delegate.sensorOrientationDegrees,
-        child: texture,
-      );
-    }
+    // if (_surfaceProducerDelegate case final AndroidSurfaceProducerDelegate delegate
+    //     when !delegate.handlesCropAndRotation) {
+    //   return RotatedPreview.fromCameraDirection(
+    //     delegate.cameraFacingDirection,
+    //     deviceOrientationStream: deviceOrientationChangedStream,
+    //     initialDeviceOrientation: delegate.initialDeviceOrientation,
+    //     sensorOrientationDegrees: delegate.sensorOrientationDegrees,
+    //     child: texture,
+    //   );
+    // }
 
     return texture;
   }

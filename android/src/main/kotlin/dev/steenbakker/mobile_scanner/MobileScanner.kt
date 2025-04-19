@@ -460,9 +460,7 @@ class MobileScanner(
                 .setTargetVideoEncodingBitRate(50000)
                 .setQualitySelector(QualitySelector.from(Quality.HD)) // HD = 720p = 16:9
                 .build()
-            videoCapture = VideoCapture.withOutput(recorder).apply {
-                targetRotation = Surface.ROTATION_0 // hoặc Surface.ROTATION_90,... dựa vào device
-            }
+            videoCapture = VideoCapture.withOutput(recorder)
 
             val useCaseGroup = UseCaseGroup.Builder()
                 .addUseCase(preview!!)
@@ -503,13 +501,13 @@ class MobileScanner(
             val resolution = analysis.resolutionInfo!!.resolution
             val width = resolution.width.toDouble()
             val height = resolution.height.toDouble()
-            val sensorRotationDegrees = 0
+            val sensorRotationDegrees = camera?.cameraInfo?.sensorRotationDegrees ?: 0
             val portrait = sensorRotationDegrees % 180 == 0
             val cameraDirection = getCameraLensFacing(camera)
 
             // Start with 'unavailable' torch state.
             var currentTorchState: Int = -1
-
+            Log.d("sensorRotationDegrees", "sensorRotationDegrees: ${camera?.cameraInfo?.sensorRotationDegrees}")
             camera?.cameraInfo?.let {
                 if (!it.hasFlashUnit()) {
                     return@let
