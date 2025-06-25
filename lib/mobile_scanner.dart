@@ -8,6 +8,7 @@ export 'src/enums/encryption_type.dart';
 export 'src/enums/mobile_scanner_authorization_state.dart';
 export 'src/enums/mobile_scanner_error_code.dart';
 export 'src/enums/phone_type.dart';
+export 'src/enums/record_state.dart';
 export 'src/enums/torch_state.dart';
 export 'src/mobile_scanner.dart';
 export 'src/mobile_scanner_controller.dart';

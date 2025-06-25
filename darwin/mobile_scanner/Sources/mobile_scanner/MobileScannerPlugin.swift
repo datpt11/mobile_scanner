@@ -11,7 +11,7 @@ import VideoToolbox
   import FlutterMacOS
 #endif
 
-public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, FlutterTexture, AVCaptureVideoDataOutputSampleBufferDelegate {
+public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, FlutterTexture, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     let registry: FlutterTextureRegistry
     
@@ -46,7 +46,19 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     var position = AVCaptureDevice.Position.back
     
     var standardZoomFactor: CGFloat = 1
+    fileprivate lazy var videoDataOutput = AVCaptureVideoDataOutput()
+    fileprivate lazy var audioDataOutput = AVCaptureAudioDataOutput()
     
+    fileprivate(set) lazy var isRecording = false
+    fileprivate var videoWriter: AVAssetWriter!
+    fileprivate var videoWriterInput: AVAssetWriterInput!
+    fileprivate var audioWriterInput: AVAssetWriterInput!
+    fileprivate var sessionAtSourceTime: CMTime?
+    fileprivate func canWrite() -> Bool {
+      return isRecording
+      && videoWriter != nil
+      && videoWriter.status == .writing
+    }
 #if os(iOS)
     var deviceOrientation: UIDeviceOrientation = UIDeviceOrientation.unknown
 #endif
@@ -111,6 +123,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             updateScanWindow(call, result)
         case "analyzeImage":
             analyzeImage(call, result)
+        case "stopRecording":
+           stopRecording(call, result)
+       case "startRecording":
+           startRecording(result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -233,6 +249,30 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                     }
                 }
             }
+        }
+        
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+
+        let writable = canWrite()
+
+        if writable,
+          sessionAtSourceTime == nil {
+          //Start writing
+          sessionAtSourceTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+          videoWriter.startSession(atSourceTime: sessionAtSourceTime!)
+        }
+
+        if writable, output ==  videoDataOutput {
+          if videoWriterInput.isReadyForMoreMediaData {
+              //Write video buffer
+              videoWriterInput.append(sampleBuffer)
+          }
+        } else if writable,
+                output == audioDataOutput,
+                audioWriterInput.isReadyForMoreMediaData {
+          //Write audio buffer
+          print("<<<<<<  audioWriterInput.append(")
+          audioWriterInput.append(sampleBuffer)
         }
     }
     
@@ -415,18 +455,26 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
         captureSession!.sessionPreset = AVCaptureSession.Preset.photo
 
-        // Add video output
-        let videoOutput = AVCaptureVideoDataOutput()
-        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-        videoOutput.alwaysDiscardsLateVideoFrames = true
+        // Add video output.Add commentMore actions
+        self.videoDataOutput = AVCaptureVideoDataOutput()
 
-        videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
-        captureSession!.addOutput(videoOutput)
+        self.videoDataOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
+
+
+
+        // calls captureOutput()
+        self.videoDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
+        if captureSession!.canAddOutput(self.videoDataOutput) {
+            captureSession!.addOutput(self.videoDataOutput)
+        } else {
+            print("Could not add video data output")
+        }
         let deviceVideoOrientation = self.getVideoOrientation()
         
 
         // Adjust orientation for the video connection
-        if let connection = videoOutput.connections.first {
+        if let connection = self.videoDataOutput.connections.first {
             if connection.isVideoOrientationSupported {
                 connection.videoOrientation = deviceVideoOrientation
             }
@@ -434,6 +482,12 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             if position == .front && connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = true
             }
+        }
+        
+        //Define your audio outputAdd commentMore actions
+        if captureSession!.canAddOutput(audioDataOutput) {
+            audioDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
+            captureSession!.addOutput(audioDataOutput)
         }
 
         captureSession!.commitConfiguration()
@@ -851,6 +905,94 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             }
         }
     }
+    
+    func startRecording(_ result: @escaping FlutterResult) {
+         DispatchQueue.global(qos: .background).async {
+             guard let captureSession = self.captureSession, captureSession.isRunning else {
+                 return
+             }
+             self.setupWriter(result)
+         }
+     }
+        
+     private var _filename = ""
+
+     func setupWriter(_ result: @escaping FlutterResult) {
+         do {
+             _filename = UUID().uuidString
+             let videoPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("\(_filename).mp4")
+             //          let url = AssetUtils.outputAssetURL(mediaType: .video)Add commentMore actions
+             videoWriter = try AVAssetWriter(url: videoPath, fileType: AVFileType.mp4)
+
+             //Add video input
+             videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: [
+                 AVVideoCodecKey: AVVideoCodecType.h264,
+                 AVVideoWidthKey: 1080,
+                 AVVideoHeightKey: 1920,
+                 AVVideoCompressionPropertiesKey: [
+                     AVVideoAverageBitRateKey: 1300000,
+                 ],
+                 AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
+             ])
+             videoWriterInput.mediaTimeScale = CMTimeScale(bitPattern: 600)
+             videoWriterInput.expectsMediaDataInRealTime = true
+ //            videoWriterInput.transform = CGAffineTransform(rotationAngle: .pi/2)
+
+             videoWriterInput.expectsMediaDataInRealTime = true //Make sure we are exporting data at realtime
+             if videoWriter.canAdd(videoWriterInput) {
+                 videoWriter.add(videoWriterInput)
+             }
+
+             //Add audio input
+             audioWriterInput = AVAssetWriterInput(mediaType: AVMediaType.audio, outputSettings: [
+                 AVFormatIDKey: kAudioFormatMPEG4AAC,
+                 AVNumberOfChannelsKey: 1,
+                 AVSampleRateKey: 44100,
+                 AVEncoderBitRateKey: 64000,
+             ])
+             audioWriterInput.expectsMediaDataInRealTime = true
+             if videoWriter.canAdd(audioWriterInput) {
+                 videoWriter.add(audioWriterInput)
+             }
+
+             videoWriter.startWriting() //Means ready to write down the file
+         }
+         catch let error {
+             debugPrint(error.localizedDescription)
+         }
+
+         guard !isRecording else { return }
+         isRecording = true
+         sessionAtSourceTime = nil
+    
+         let event: [String: Any?] = ["name": "recordState", "data": 1]
+         sink?(event)
+     }
+
+     func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+         do {
+             let id: String? = (call.arguments as! Dictionary<String, Any?>)["id"] as? String? ?? nil
+             DispatchQueue.global(qos: .background).async {
+                 guard let captureSession = self.captureSession, captureSession.isRunning else {
+                     return
+                 }
+                 guard self.isRecording else { return }
+                 self.isRecording = false
+                 self.videoWriter.finishWriting { [weak self] in
+                     self?.sessionAtSourceTime = nil
+                     guard let url = self?.videoWriter.outputURL else { return }
+                     
+                     let event: [String: Any?] = ["name": "file", "data": url.path, "id": id]
+                     self?.sink?(event)
+                 }
+                 let event: [String: Any?] = ["name": "recordState", "data": 0]
+                 self.sink?(event)
+             }
+         } catch {
+             result(FlutterError(code: "FILE_ERROR", message: "Error stopping recording", details: nil))
+         }
+        
+     }
 
     // Observer for torch state
     public override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {

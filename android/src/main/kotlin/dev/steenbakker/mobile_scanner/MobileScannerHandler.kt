@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -71,6 +72,20 @@ class MobileScannerHandler(
                 "height" to height?.toDouble(),
             )
         ))
+    }
+
+    private val recordStateCallback: RecordStateCallback = {state: Int ->
+        // Off = 0, On = 1
+        barcodeHandler.publishEvent(mapOf("name" to "recordState", "data" to state))
+    }
+
+    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, id: String?, _: Int? ->
+        if (url != null) {
+            val id = id ?: ""
+            barcodeHandler.publishEvent(mapOf("name" to "file", "data" to url, "id" to id))
+        } else {
+            Log.d("", "Video recording error")
+        }
     }
 
     private val errorCallback: MobileScannerErrorCallback = {error: String ->
@@ -151,6 +166,8 @@ class MobileScannerHandler(
             "setScale" -> setScale(call, result)
             "resetScale" -> resetScale(result)
             "updateScanWindow" -> updateScanWindow(call, result)
+            "startRecording" -> startRecording(call, result)
+            "stopRecording" -> stopRecording(call, result)
             else -> result.notImplemented()
         }
     }
@@ -202,7 +219,7 @@ class MobileScannerHandler(
                         "sensorOrientation" to it.sensorOrientation,
                         "currentTorchState" to it.currentTorchState,
                         "numberOfCameras" to it.numberOfCameras,
-                        "cameraDirection" to it.cameraDirection
+                        "cameraDirection" to it.cameraDirection,
                     ))
                 }
             },
@@ -373,5 +390,13 @@ class MobileScannerHandler(
             e.printStackTrace()
         }
         return maxZoom
+    }
+
+    private fun startRecording(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String?>("id")
+        mobileScanner?.startRecording(id, recordStateCallback, videoRecordCompletionCallback);
+    }
+    private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {
+        mobileScanner?.stopRecording(recordStateCallback)
     }
 }

@@ -28,9 +28,17 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.TorchState
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.barcode.BarcodeScanner
@@ -48,6 +56,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -83,6 +92,10 @@ class MobileScanner(
     private var detectionTimeout: Long = 250
     private var returnImage = false
     private var isPaused = false
+
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private lateinit var outputDirectory: File
+    private var currentRecording: Recording? = null
 
     companion object {
         // Configure the `ProcessCameraProvider` to only log errors.
@@ -325,6 +338,47 @@ class MobileScanner(
         }
     }
 
+    private fun getOutputDirectory(context: Context): File {
+        val mediaDir = context.getExternalFilesDir(null)?.let {
+            File(it, "878").apply { mkdirs() }
+        }
+        return if (mediaDir != null && mediaDir.exists()) mediaDir else context.filesDir
+    }
+
+    fun startRecording(id: String?, recordStateCallback: RecordStateCallback, videoRecordCompletionCallback: VideoRecordCompletionCallback) {
+        val videoFile = File(outputDirectory, "${System.currentTimeMillis()}.mp4")
+        val outputOptions = FileOutputOptions.Builder(videoFile).build()
+        val recording = videoCapture?.output?.prepareRecording(activity.applicationContext, outputOptions)?.apply {
+            withAudioEnabled()
+        }?.start(ContextCompat.getMainExecutor(activity.applicationContext)) { recordEvent ->
+            when (recordEvent) {
+                is VideoRecordEvent.Start -> {
+                    Log.d("TAG", "Video recording started")
+                    recordStateCallback(1)
+                }
+                is VideoRecordEvent.Finalize -> {
+                    if (recordEvent.hasError()) {
+                        Log.e("TAG", "Video recording error: ${recordEvent.error}")
+//                        result.error("VIDEO_RECORDING_ERROR", recordEvent.error.toString(), null)
+                        videoRecordCompletionCallback(null, id, recordEvent.error)
+                    } else {
+                        Log.d("TAG", "Video recording succeeded: ${recordEvent.outputResults.outputUri}")
+                        recordEvent.outputResults.outputUri.path?.let {
+                            videoRecordCompletionCallback(
+                                it, id, null)
+                        }
+                    }
+                }
+            }
+        }
+        currentRecording = recording
+    }
+
+    fun stopRecording(recordStateCallback: RecordStateCallback) {
+        currentRecording?.stop()
+        recordStateCallback(0)
+    }
+
     /**
      * Start barcode scanning by initializing the camera and barcode scanner.
      */
@@ -380,7 +434,7 @@ class MobileScanner(
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(activity)
         val executor = ContextCompat.getMainExecutor(activity)
-
+        outputDirectory = getOutputDirectory(activity.applicationContext)
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
             val numberOfCameras = cameraProvider?.availableCameraInfos?.size
@@ -440,13 +494,23 @@ class MobileScanner(
             }
 
             val analysis = analysisBuilder.build().apply { setAnalyzer(executor, captureOutput) }
+            val recorder = Recorder.Builder()
+                    .setExecutor(executor)
+                .setTargetVideoEncodingBitRate(50000)
+                .setQualitySelector(QualitySelector.from(Quality.HD)) // HD = 720p = 16:9
+                .build()
+            videoCapture = VideoCapture.withOutput(recorder)
 
+            val useCaseGroup = UseCaseGroup.Builder()
+                .addUseCase(preview!!)
+                .addUseCase(videoCapture!!)
+                .addUseCase(analysis)
+                .build()
             try {
                 camera = cameraProvider?.bindToLifecycle(
                     activity as LifecycleOwner,
                     cameraPosition,
-                    preview,
-                    analysis
+                    useCaseGroup
                 )
                 cameraSelector = cameraPosition
             } catch(exception: Exception) {

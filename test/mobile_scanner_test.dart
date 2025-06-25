@@ -7,15 +7,10 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:mobile_scanner/src/method_channel/mobile_scanner_method_channel.dart';
 import 'package:mocktail/mocktail.dart';
 
-class MockMobileScannerController extends Mock
-    implements MobileScannerController {
+class MockMobileScannerController extends Mock implements MobileScannerController {
   @override
   Widget buildCameraView() {
-    return const Placeholder(
-      fallbackHeight: 100,
-      fallbackWidth: 100,
-      color: Color(0xFF00FF00),
-    );
+    return const Placeholder(fallbackHeight: 100, fallbackWidth: 100, color: Color(0xFF00FF00));
   }
 }
 
@@ -38,9 +33,7 @@ void main() {
     barcodeStreamController = StreamController<BarcodeCapture>.broadcast();
 
     when(() => mockController.autoStart).thenReturn(true);
-    when(
-      () => mockController.barcodes,
-    ).thenAnswer((_) => barcodeStreamController.stream);
+    when(() => mockController.barcodes).thenAnswer((_) => barcodeStreamController.stream);
     when(() => mockController.value).thenReturn(
       const MobileScannerState(
         availableCameras: 2,
@@ -52,6 +45,7 @@ void main() {
         torchState: TorchState.off,
         zoomScale: 1,
         deviceOrientation: DeviceOrientation.portraitUp,
+        recordState: RecordState.unavailable,
       ),
     );
     when(() => mockController.start()).thenAnswer((_) async {});
@@ -71,9 +65,7 @@ void main() {
       bool wasCalled = false;
       final barcodeStreamController = StreamController<BarcodeCapture>();
 
-      when(
-        () => mockController.barcodes,
-      ).thenAnswer((_) => barcodeStreamController.stream);
+      when(() => mockController.barcodes).thenAnswer((_) => barcodeStreamController.stream);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -112,13 +104,12 @@ void main() {
           zoomScale: 1,
           error: exception,
           deviceOrientation: DeviceOrientation.portraitUp,
+          recordState: RecordState.unavailable,
         ),
       );
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: MobileScanner(controller: mockController)),
-        ),
+        MaterialApp(home: Scaffold(body: MobileScanner(controller: mockController))),
       );
 
       await tester.pump();
@@ -126,16 +117,12 @@ void main() {
       expect(find.byIcon(Icons.error), findsOneWidget);
     });
 
-    testWidgets('disposes properly when no controller is provided', (
-      tester,
-    ) async {
+    testWidgets('disposes properly when no controller is provided', (tester) async {
       const testWidget = MaterialApp(home: Scaffold(body: MobileScanner()));
 
       await tester.pumpWidget(testWidget);
       await tester.pumpAndSettle();
-      await tester.pumpWidget(
-        Container(),
-      ); // Remove the widget to trigger disposal
+      await tester.pumpWidget(Container()); // Remove the widget to trigger disposal
 
       expect(tester.takeException(), isNull);
 
@@ -144,13 +131,9 @@ void main() {
       // Instead, we ensure there is no exception.
     });
 
-    testWidgets('does not dispose externally provided controller', (
-      tester,
-    ) async {
+    testWidgets('does not dispose externally provided controller', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: MobileScanner(controller: mockController)),
-        ),
+        MaterialApp(home: Scaffold(body: MobileScanner(controller: mockController))),
       );
 
       await tester.pumpAndSettle();

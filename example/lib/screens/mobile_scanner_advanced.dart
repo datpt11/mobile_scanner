@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
+import 'package:chewie/chewie.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:mobile_scanner_example/widgets/buttons/analyze_image_button.dart';
 import 'package:mobile_scanner_example/widgets/buttons/pause_button.dart';
+import 'package:mobile_scanner_example/widgets/buttons/recording_button.dart';
 import 'package:mobile_scanner_example/widgets/buttons/start_stop_button.dart';
 import 'package:mobile_scanner_example/widgets/buttons/switch_camera_button.dart';
 import 'package:mobile_scanner_example/widgets/buttons/toggle_flashlight_button.dart';
@@ -17,6 +20,7 @@ import 'package:mobile_scanner_example/widgets/dialogs/resolution_dialog.dart';
 import 'package:mobile_scanner_example/widgets/scanned_barcode_label.dart';
 import 'package:mobile_scanner_example/widgets/scanner_error_widget.dart';
 import 'package:mobile_scanner_example/widgets/zoom_scale_slider_widget.dart';
+import 'package:video_player/video_player.dart';
 
 enum _PopupMenuItems {
   cameraResolution,
@@ -64,7 +68,9 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
   bool hideMobileScannerWidget = false;
 
   List<BarcodeFormat> selectedFormats = [];
-
+  StreamSubscription<Object?>? _subscription;
+  late VideoPlayerController _videoPlayerController;
+  late ChewieController _chewieController;
   MobileScannerController initController() => MobileScannerController(
     autoStart: false,
     cameraResolution: desiredCameraResolution,
@@ -81,6 +87,49 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
   void initState() {
     super.initState();
     controller = initController();
+    _subscription = controller!.recordFile.listen((recordFile) async {
+      Future<String> getFileSize(String filepath, int decimals) async {
+        final file = File(filepath);
+        final int bytes = await file.length();
+        if (bytes <= 0) return '0 B';
+        const suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        final int i = (log(bytes) / log(1024)).floor();
+        return '${(bytes / pow(1024, i)).toStringAsFixed(decimals)} ${suffixes[i]}';
+      }
+
+      _videoPlayerController = VideoPlayerController.file(File(recordFile?.file ?? ''));
+      await _videoPlayerController.initialize().then(
+        (value) => setState(
+          () =>
+              _chewieController = ChewieController(
+                videoPlayerController: _videoPlayerController,
+                aspectRatio: _videoPlayerController.value.aspectRatio,
+                hideControlsTimer: const Duration(seconds: 5),
+              ),
+        ),
+      );
+      // await GallerySaver.saveVideo(File(file.toString()).path);
+      // File(File(file.toString()).path).deleteSync();
+      Future.delayed(const Duration(seconds: 5), () {
+        showModalBottomSheet(
+          context: context,
+          builder: (context) {
+            return _videoPlayerController.value.isInitialized
+                ? Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 0.8,
+                    child: Chewie(controller: _chewieController),
+                  ),
+                )
+                : const Center(child: CircularProgressIndicator());
+          },
+        );
+      });
+    });
     unawaited(controller!.start());
   }
 
@@ -88,15 +137,14 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
   Future<void> dispose() async {
     super.dispose();
     await controller?.dispose();
+    _subscription?.cancel();
     controller = null;
   }
 
   Future<void> _showResolutionDialog() async {
     final Size? result = await showDialog<Size>(
       context: context,
-      builder:
-          (context) =>
-              ResolutionDialog(initialResolution: desiredCameraResolution),
+      builder: (context) => ResolutionDialog(initialResolution: desiredCameraResolution),
     );
 
     if (result != null) {
@@ -122,9 +170,7 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
   Future<void> _showDetectionTimeoutDialog() async {
     final int? result = await showDialog<int>(
       context: context,
-      builder:
-          (context) =>
-              DetectionTimeoutDialog(initialTimeoutMs: detectionTimeoutMs),
+      builder: (context) => DetectionTimeoutDialog(initialTimeoutMs: detectionTimeoutMs),
     );
 
     if (result != null) {
@@ -150,8 +196,7 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
   Future<void> _showBarcodeFormatDialog() async {
     final List<BarcodeFormat>? result = await showDialog<List<BarcodeFormat>>(
       context: context,
-      builder:
-          (context) => BarcodeFormatDialog(selectedFormats: selectedFormats),
+      builder: (context) => BarcodeFormatDialog(selectedFormats: selectedFormats),
     );
 
     if (result != null) {
@@ -308,14 +353,10 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
                     },
                     fit: boxFit,
                   ),
-                  if (useBarcodeOverlay)
-                    BarcodeOverlay(controller: controller!, boxFit: boxFit),
+                  if (useBarcodeOverlay) BarcodeOverlay(controller: controller!, boxFit: boxFit),
                   // The scanWindow is not supported on the web.
                   if (useScanWindow)
-                    ScanWindowOverlay(
-                      scanWindow: scanWindow,
-                      controller: controller!,
-                    ),
+                    ScanWindowOverlay(scanWindow: scanWindow, controller: controller!),
                   if (returnImage)
                     Align(
                       alignment: Alignment.topRight,
@@ -345,9 +386,7 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
                               final Uint8List? barcodeImage = barcode.image;
 
                               if (barcodeImage == null) {
-                                return const Center(
-                                  child: Text('No image for this barcode.'),
-                                );
+                                return const Center(child: Text('No image for this barcode.'));
                               }
 
                               return Image.memory(
@@ -356,9 +395,7 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
                                 gaplessPlayback: true,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Center(
-                                    child: Text(
-                                      'Could not decode image bytes. $error',
-                                    ),
+                                    child: Text('Could not decode image bytes. $error'),
                                   );
                                 },
                               );
@@ -376,11 +413,7 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: ScannedBarcodeLabel(
-                              barcodes: controller!.barcodes,
-                            ),
-                          ),
+                          Expanded(child: ScannedBarcodeLabel(barcodes: controller!.barcodes)),
                           if (!kIsWeb) ZoomScaleSlider(controller: controller!),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -388,6 +421,7 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
                               ToggleFlashlightButton(controller: controller!),
                               StartStopButton(controller: controller!),
                               PauseButton(controller: controller!),
+                              RecordingButton(controller: controller!),
                               SwitchCameraButton(controller: controller!),
                               AnalyzeImageButton(controller: controller!),
                             ],

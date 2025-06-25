@@ -4,6 +4,7 @@ library;
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/src/enums/camera_facing.dart';
 import 'package:mobile_scanner/src/enums/mobile_scanner_error_code.dart';
+import 'package:mobile_scanner/src/enums/record_state.dart';
 import 'package:mobile_scanner/src/enums/torch_state.dart';
 import 'package:mobile_scanner/src/mobile_scanner_exception.dart';
 
@@ -20,6 +21,7 @@ class MobileScannerState {
     required this.torchState,
     required this.zoomScale,
     required this.deviceOrientation,
+    required this.recordState,
     this.error,
   });
 
@@ -35,6 +37,7 @@ class MobileScannerState {
         torchState: TorchState.unavailable,
         deviceOrientation: DeviceOrientation.portraitUp,
         zoomScale: 1,
+        recordState: RecordState.unavailable,
       );
 
   /// The number of available cameras.
@@ -74,13 +77,15 @@ class MobileScannerState {
   /// The current zoom scale of the camera.
   final double zoomScale;
 
+  /// The current state of the recording of the camera.
+  final RecordState recordState;
+
   /// The current device UI orientation.
   final DeviceOrientation deviceOrientation;
 
   /// Whether permission to access the camera was granted.
   bool get hasCameraPermission {
-    return isInitialized &&
-        error?.errorCode != MobileScannerErrorCode.permissionDenied;
+    return isInitialized && error?.errorCode != MobileScannerErrorCode.permissionDenied;
   }
 
   /// Create a copy of this state with the given parameters.
@@ -95,6 +100,7 @@ class MobileScannerState {
     TorchState? torchState,
     DeviceOrientation? deviceOrientation,
     double? zoomScale,
+    RecordState? recordState,
   }) {
     return MobileScannerState(
       availableCameras: availableCameras ?? this.availableCameras,
@@ -107,6 +113,7 @@ class MobileScannerState {
       torchState: torchState ?? this.torchState,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
       zoomScale: zoomScale ?? this.zoomScale,
+      recordState: recordState ?? this.recordState,
     );
   }
 }
