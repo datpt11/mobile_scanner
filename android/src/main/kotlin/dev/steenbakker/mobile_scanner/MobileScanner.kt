@@ -497,7 +497,7 @@ class MobileScanner(
             val recorder = Recorder.Builder()
                     .setExecutor(executor)
                 .setTargetVideoEncodingBitRate(1300000)
-                .setQualitySelector(QualitySelector.from(Quality.FHD))
+                .setQualitySelector(QualitySelector.from(Quality.HD))
                 .build()
             videoCapture = VideoCapture.withOutput(recorder)
 
