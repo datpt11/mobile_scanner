@@ -257,9 +257,26 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
         if writable,
           sessionAtSourceTime == nil {
-          //Start writing
-          sessionAtSourceTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-          videoWriter.startSession(atSourceTime: sessionAtSourceTime!)
+            //Start writing
+            if videoWriter.status == .unknown {
+                videoWriter.startWriting()
+                
+                // Kiểm tra trạng thái sau khi startWriting
+                guard videoWriter.status == .writing else {
+                    print("Failed to start writing: \(videoWriter.error?.localizedDescription ?? "Unknown error")")
+                    return
+                }
+            }
+            
+            sessionAtSourceTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            
+            // Kiểm tra timestamp hợp lệ
+            guard CMTimeCompare(sessionAtSourceTime!, CMTime.zero) >= 0 else {
+                print("Invalid session start time")
+                return
+            }
+            
+            videoWriter.startSession(atSourceTime: sessionAtSourceTime!)
         }
 
         if writable, output ==  videoDataOutput {
@@ -954,8 +971,6 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
              if videoWriter.canAdd(audioWriterInput) {
                  videoWriter.add(audioWriterInput)
              }
-
-             videoWriter.startWriting() //Means ready to write down the file
          }
          catch let error {
              debugPrint(error.localizedDescription)
@@ -978,6 +993,8 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                  }
                  guard self.isRecording else { return }
                  self.isRecording = false
+                 self.videoWriterInput.markAsFinished()
+                 self.audioWriterInput.markAsFinished()
                  self.videoWriter.finishWriting { [weak self] in
                      self?.sessionAtSourceTime = nil
                      guard let url = self?.videoWriter.outputURL else { return }
