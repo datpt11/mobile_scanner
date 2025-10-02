@@ -48,7 +48,8 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     var standardZoomFactor: CGFloat = 1
     fileprivate lazy var videoDataOutput = AVCaptureVideoDataOutput()
     fileprivate lazy var audioDataOutput = AVCaptureAudioDataOutput()
-    
+    private var recorder = VideoRecorder()
+
     fileprivate(set) lazy var isRecording = false
     fileprivate var videoWriter: AVAssetWriter!
     fileprivate var videoWriterInput: AVAssetWriterInput!
@@ -126,7 +127,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         case "stopRecording":
            stopRecording(call, result)
        case "startRecording":
-           startRecording(result)
+           startRecording()
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -252,45 +253,8 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
         
         guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
-
-        let writable = canWrite()
-
-        if writable,
-          sessionAtSourceTime == nil {
-            //Start writing
-            if videoWriter.status == .unknown {
-                videoWriter.startWriting()
-                
-                // Kiểm tra trạng thái sau khi startWriting
-                guard videoWriter.status == .writing else {
-                    print("Failed to start writing: \(videoWriter.error?.localizedDescription ?? "Unknown error")")
-                    return
-                }
-            }
-            
-            sessionAtSourceTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            
-            // Kiểm tra timestamp hợp lệ
-            guard CMTimeCompare(sessionAtSourceTime!, CMTime.zero) >= 0 else {
-                print("Invalid session start time")
-                return
-            }
-            
-            videoWriter.startSession(atSourceTime: sessionAtSourceTime!)
-        }
-
-        if writable, output ==  videoDataOutput {
-          if videoWriterInput.isReadyForMoreMediaData {
-              //Write video buffer
-              videoWriterInput.append(sampleBuffer)
-          }
-        } else if writable,
-                output == audioDataOutput,
-                audioWriterInput.isReadyForMoreMediaData {
-          //Write audio buffer
-          print("<<<<<<  audioWriterInput.append(")
-          audioWriterInput.append(sampleBuffer)
-        }
+        
+        recorder.append(sampleBuffer: sampleBuffer)
     }
     
     func checkPermission(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
@@ -923,14 +887,38 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
     }
     
-    func startRecording(_ result: @escaping FlutterResult) {
-         DispatchQueue.global(qos: .background).async {
-             guard let captureSession = self.captureSession, captureSession.isRunning else {
-                 return
-             }
-             self.setupWriter(result)
-         }
-     }
+    func startRecording() {
+        let fileName = UUID().uuidString + ".mp4"
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 1080,
+            AVVideoHeightKey: 1920,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 1300000,
+            ],
+            AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
+        ]
+
+        let audioSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: 44100,
+            AVEncoderBitRateKey: 64000
+        ]
+
+        do {
+            try recorder.startRecording(to: outputURL,
+                                        videoSettings: videoSettings,
+                                        audioSettings: audioSettings, completion: { status in
+                self.sink?(["name": "recordState", "data": status])
+                                        })
+            print("▶️ Recording started at \(outputURL)")
+        } catch {
+            print("❌ Failed to start recording: \(error.localizedDescription)")
+        }
+    }
         
      private var _filename = ""
 
@@ -985,29 +973,18 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
      }
 
      func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-         do {
-             let id: String? = (call.arguments as! Dictionary<String, Any?>)["id"] as? String? ?? nil
-             DispatchQueue.global(qos: .background).async {
-                 guard let captureSession = self.captureSession, captureSession.isRunning else {
-                     return
-                 }
-                 guard self.isRecording else { return }
-                 self.isRecording = false
-                 self.videoWriterInput.markAsFinished()
-                 self.audioWriterInput.markAsFinished()
-                 self.videoWriter.finishWriting { [weak self] in
-                     self?.sessionAtSourceTime = nil
-                     guard let url = self?.videoWriter.outputURL else { return }
-                     
-                     let event: [String: Any?] = ["name": "file", "data": url.path, "id": id]
-                     self?.sink?(event)
-                 }
-                 let event: [String: Any?] = ["name": "recordState", "data": 0]
-                 self.sink?(event)
-             }
-         } catch {
-             result(FlutterError(code: "FILE_ERROR", message: "Error stopping recording", details: nil))
-         }
+         let id: String? = (call.arguments as! Dictionary<String, Any?>)["id"] as? String? ?? nil
+        recorder.stopRecording {status, url in
+            if let fileURL = url {
+                print("✅ Video saved at \(fileURL)")
+                let event: [String: Any?] = ["name": "file", "data": fileURL.path, "id": id]
+                self.sink?(event)
+                self.sink?(["name": "recordState", "data": 0])
+            } else {
+                print("⚠️ Recording cancelled (no frames)")
+                self.sink?(["name": "recordState", "data": 0])
+            }
+        }
         
      }
 
