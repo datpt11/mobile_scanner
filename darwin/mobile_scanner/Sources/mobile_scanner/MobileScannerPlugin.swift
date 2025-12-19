@@ -25,7 +25,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     var captureSession: AVCaptureSession?
 
     // The selected camera
-    weak var device: AVCaptureDevice!
+    weak var videoDevice: AVCaptureDevice!
+    
+    // The selected audio
+    weak var audioDevice: AVCaptureDevice!
 
     // Image to be sent to the texture
     var latestBuffer: CVImageBuffer!
@@ -65,7 +68,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 #endif
     
     private var stopped: Bool {
-        return device == nil || captureSession == nil
+        return videoDevice == nil || captureSession == nil
     }
 
     private var paused: Bool {
@@ -160,6 +163,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         // Ignore invalid texture id.
         if textureId == nil {
+            return
+        }
+        if output === audioDataOutput {
+            recorder.append(sampleBuffer: sampleBuffer)
             return
         }
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
@@ -351,7 +358,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
 
     func start(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-        if (device != nil || captureSession != nil) {
+        if (videoDevice != nil || captureSession != nil) {
             result(FlutterError(code: MobileScannerErrorCodes.ALREADY_STARTED_ERROR,
                                 message: MobileScannerErrorCodes.ALREADY_STARTED_ERROR_MESSAGE,
                                 details: nil))
@@ -382,32 +389,35 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         
         // Open the camera device
         if #available(macOS 10.15, *) {
-            device = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: .video, position: position).devices.first
+            videoDevice = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: .video, position: position).devices.first
         } else {
-            device = AVCaptureDevice.devices(for: .video).filter({$0.position == position}).first
+            videoDevice = AVCaptureDevice.devices(for: .video).filter({$0.position == position}).first
         }
         
-        if (device == nil) {
+        if (videoDevice == nil) {
             result(FlutterError(code: MobileScannerErrorCodes.NO_CAMERA_ERROR,
                                 message: MobileScannerErrorCodes.NO_CAMERA_ERROR_MESSAGE,
                                 details: nil))
             return
         }
 
-        device.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.torchMode), options: .new, context: nil)
+        videoDevice.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.torchMode), options: .new, context: nil)
 #if os(iOS)
-        device.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.videoZoomFactor), options: [.new, .initial], context: nil)
+        videoDevice.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.videoZoomFactor), options: [.new, .initial], context: nil)
 #endif
+        
+               //audioDevice = AVCaptureDevice.default(for: AVMediaType.audio)!
+        audioDevice = AVCaptureDevice.default(AVCaptureDevice.DeviceType.builtInMicrophone, for: AVMediaType.audio, position: AVCaptureDevice.Position.unspecified)!
         captureSession!.beginConfiguration()
         
         // Check the zoom factor at switching from ultra wide camera to wide camera.
         standardZoomFactor = 1
 #if os(iOS)
         if #available(iOS 13.0, *) {
-            for (index, actualDevice) in device.constituentDevices.enumerated() {
+            for (index, actualDevice) in videoDevice.constituentDevices.enumerated() {
                 if (actualDevice.deviceType != .builtInUltraWideCamera) {
-                    if index > 0 && index <= device.virtualDeviceSwitchOverVideoZoomFactors.count {
-                        standardZoomFactor = CGFloat(truncating: device.virtualDeviceSwitchOverVideoZoomFactors[index - 1])
+                    if index > 0 && index <= videoDevice.virtualDeviceSwitchOverVideoZoomFactors.count {
+                        standardZoomFactor = CGFloat(truncating: videoDevice.virtualDeviceSwitchOverVideoZoomFactors[index - 1])
                     }
                     break
                 }
@@ -417,7 +427,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
         // Add device input
         do {
-            let input = try AVCaptureDeviceInput(device: device)
+            let input = try AVCaptureDeviceInput(device: videoDevice)
             
             if (!(captureSession!.canAddInput(input))) {
                 result(FlutterError(
@@ -434,8 +444,22 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 message: error.localizedDescription, details: nil))
             return
         }
-        captureSession!.sessionPreset = AVCaptureSession.Preset.photo
 
+        do {
+            let audioInput = try AVCaptureDeviceInput(device: audioDevice)
+            if captureSession!.canAddInput(audioInput) {
+                captureSession!.addInput(audioInput)
+                print("Added AVCaptureDeviceInput: audio")
+            } else
+            {
+                print("Could not add MIC!!!")
+            }
+        } catch {
+            print("Could not add MIC!!!")
+        }
+
+        captureSession!.sessionPreset = AVCaptureSession.Preset.photo
+        // }
         // Add video output.Add commentMore actions
         self.videoDataOutput = AVCaptureVideoDataOutput()
 
@@ -451,26 +475,30 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         } else {
             print("Could not add video data output")
         }
-        let deviceVideoOrientation = self.getVideoOrientation()
+        
+        self.audioDataOutput = AVCaptureAudioDataOutput()
+        self.audioDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "audio.queue"))
+        //Define your audio outputAdd commentMore actions
+        if captureSession!.canAddOutput(self.audioDataOutput) {
+            captureSession!.addOutput(self.audioDataOutput)
+        } else {
+            print("Could not add audio data output")
+        }
+
+        let videoDeviceOrientation = self.getVideoOrientation()
         
 
         // Adjust orientation for the video connection
         if let connection = self.videoDataOutput.connections.first {
             if connection.isVideoOrientationSupported {
-                connection.videoOrientation = deviceVideoOrientation
+                connection.videoOrientation = videoDeviceOrientation
             }
 
             if position == .front && connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = true
             }
         }
-        
-        //Define your audio outputAdd commentMore actions
-        if captureSession!.canAddOutput(audioDataOutput) {
-            audioDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
-            captureSession!.addOutput(audioDataOutput)
-        }
-
+     
         captureSession!.commitConfiguration()
 
         // Move startRunning to a background thread to avoid blocking the main UI thread.
@@ -480,7 +508,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             DispatchQueue.main.async {
                 let dimensions: CMVideoDimensions
 
-                if let device = self.device {
+                if let device = self.videoDevice {
                     dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
                 } else {
                     dimensions = CMVideoDimensions()
@@ -501,7 +529,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 // Return the result on the main thread after the session starts.
                 let answer: [String : Any?]
 
-                if let device = self.device {
+                if let device = self.videoDevice {
                     let cameraDirection: Int? = switch(device.position) {
                         case .back: 1
                         case .unspecified: nil
@@ -514,7 +542,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                         "size": size,
                         "currentTorchState": device.hasTorch ? device.torchMode.rawValue : -1,
                         "cameraDirection": cameraDirection,
-                        "initialDeviceOrientation": deviceVideoOrientation.toOrientationString
+                        "initialDeviceOrientation": videoDeviceOrientation.toOrientationString
                     ]
                 } else {
                     answer = [
@@ -531,7 +559,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
     /// Turn the torch on.
     private func turnTorchOn() {
-        guard let device = self.device else {
+        guard let device = self.videoDevice else {
             return
         }
 
@@ -603,17 +631,17 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
     /// Set the zoom factor of the camera
     func setScaleInternal(_ scale: CGFloat) throws {
-        if (device == nil) {
+        if (videoDevice == nil) {
             throw MobileScannerError.zoomWhenStopped
         }
 
         do {
 #if os(iOS)
-                try device.lockForConfiguration()
+                try videoDevice.lockForConfiguration()
                 // Limit to 1.0 scale
-                device.videoZoomFactor = getSafeZoomFactor(scale: scale)
+                videoDevice.videoZoomFactor = getSafeZoomFactor(scale: scale)
 
-                device.unlockForConfiguration()
+                videoDevice.unlockForConfiguration()
 #endif
         } catch {
             throw MobileScannerError.zoomError(error)
@@ -624,7 +652,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 #if os(iOS)
     /// Set the device orientation if it differs from previous orientation
     func setDeviceOrientation(orientation: UIDeviceOrientation) {
-        if (device == nil || deviceOrientation == orientation) {
+        if (videoDevice == nil || deviceOrientation == orientation) {
             return
         }
 
@@ -647,15 +675,15 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
     /// Reset the zoom factor of the camera
     func resetScaleInternal() throws {
-        if (device == nil) {
+        if (videoDevice == nil) {
             throw MobileScannerError.zoomWhenStopped
         }
 
         do {
 #if os(iOS)
-                try device.lockForConfiguration()
-                device.videoZoomFactor = standardZoomFactor
-                device.unlockForConfiguration()
+                try videoDevice.lockForConfiguration()
+                videoDevice.videoZoomFactor = standardZoomFactor
+                videoDevice.unlockForConfiguration()
 #endif
         } catch {
             throw MobileScannerError.zoomError(error)
@@ -671,7 +699,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         actualScale = min(5.0, actualScale)
         
         // Ensure it does not exceed the camera's max zoom capability
-        scaleToUse = min(device.activeFormat.videoMaxZoomFactor, actualScale)
+        scaleToUse = min(videoDevice.activeFormat.videoMaxZoomFactor, actualScale)
 #endif
         return scaleToUse
     }
@@ -681,18 +709,18 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     }
 
     private func toggleTorch(_ result: @escaping FlutterResult) {
-        guard let device = self.device else {
+        guard let device = self.videoDevice else {
             result(nil)
             return
         }
         
-        if (!device.hasTorch) {
+        if (!videoDevice.hasTorch) {
             result(nil)
             return
         }
         
         if #available(macOS 15.0, *) {
-            if(!device.isTorchAvailable) {
+            if(!videoDevice.isTorchAvailable) {
                 result(nil)
                 return
             }
@@ -700,7 +728,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         
         var newTorchMode: AVCaptureDevice.TorchMode = device.torchMode
         
-        switch(device.torchMode) {
+        switch(videoDevice.torchMode) {
         case AVCaptureDevice.TorchMode.auto:
             if #available(macOS 10.15, *) {
                 newTorchMode = device.isTorchActive ? AVCaptureDevice.TorchMode.off : AVCaptureDevice.TorchMode.on
@@ -766,7 +794,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             return
         }
 
-        guard let device = device else {
+        guard let device = videoDevice else {
             return
         }
 
@@ -784,7 +812,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
         latestBuffer = nil
         self.captureSession = nil
-        self.device = nil
+        self.videoDevice = nil
     }
 
     private func releaseTexture() {
@@ -920,58 +948,6 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
     }
         
-     private var _filename = ""
-
-     func setupWriter(_ result: @escaping FlutterResult) {
-         do {
-             _filename = UUID().uuidString
-             let videoPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("\(_filename).mp4")
-             //          let url = AssetUtils.outputAssetURL(mediaType: .video)Add commentMore actions
-             videoWriter = try AVAssetWriter(url: videoPath, fileType: AVFileType.mp4)
-
-             //Add video input
-             videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: [
-                 AVVideoCodecKey: AVVideoCodecType.h264,
-                 AVVideoWidthKey: 1080,
-                 AVVideoHeightKey: 1920,
-                 AVVideoCompressionPropertiesKey: [
-                     AVVideoAverageBitRateKey: 1300000,
-                 ],
-                 AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
-             ])
-             videoWriterInput.mediaTimeScale = CMTimeScale(bitPattern: 600)
-             videoWriterInput.expectsMediaDataInRealTime = true
- //            videoWriterInput.transform = CGAffineTransform(rotationAngle: .pi/2)
-
-             videoWriterInput.expectsMediaDataInRealTime = true //Make sure we are exporting data at realtime
-             if videoWriter.canAdd(videoWriterInput) {
-                 videoWriter.add(videoWriterInput)
-             }
-
-             //Add audio input
-             audioWriterInput = AVAssetWriterInput(mediaType: AVMediaType.audio, outputSettings: [
-                 AVFormatIDKey: kAudioFormatMPEG4AAC,
-                 AVNumberOfChannelsKey: 1,
-                 AVSampleRateKey: 44100,
-                 AVEncoderBitRateKey: 64000,
-             ])
-             audioWriterInput.expectsMediaDataInRealTime = true
-             if videoWriter.canAdd(audioWriterInput) {
-                 videoWriter.add(audioWriterInput)
-             }
-         }
-         catch let error {
-             debugPrint(error.localizedDescription)
-         }
-
-         guard !isRecording else { return }
-         isRecording = true
-         sessionAtSourceTime = nil
-    
-         let event: [String: Any?] = ["name": "recordState", "data": 1]
-         sink?(event)
-     }
-
      func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
          let id: String? = (call.arguments as! Dictionary<String, Any?>)["id"] as? String? ?? nil
         recorder.stopRecording {status, url in

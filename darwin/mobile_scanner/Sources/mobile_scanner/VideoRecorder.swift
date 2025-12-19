@@ -28,6 +28,7 @@ class VideoRecorder {
             writer!.add(vInput)
         }
         if let aInput = audioInput, writer!.canAdd(aInput) {
+            print("✅ Added audio input")
             writer!.add(aInput)
         }
 
@@ -46,26 +47,35 @@ class VideoRecorder {
             return
         }
 
+        let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer)
+        let mediaType = CMFormatDescriptionGetMediaType(formatDesc!)
+
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
-        // Chỉ start session khi nhận frame video đầu tiên
-        if sessionAtSourceTime == nil {
+        // 👉 CHỈ start session khi gặp VIDEO FRAME ĐẦU TIÊN
+        if sessionAtSourceTime == nil && mediaType == kCMMediaType_Video {
             sessionAtSourceTime = timestamp
             writer.startWriting()
             writer.startSession(atSourceTime: timestamp)
             print("▶️ Start writing at \(timestamp.seconds)")
         }
-        
-        // Nếu chưa start thì bỏ qua frame
-        guard writer.status == .writing else { return }
 
-        if let vInput = videoInput, vInput.isReadyForMoreMediaData {
-            if vInput.append(sampleBuffer) {
-                hasWrittenFrame = true
+        guard writer.status == .writing else { return }
+    
+        if mediaType == kCMMediaType_Video {
+            if let vInput = videoInput, vInput.isReadyForMoreMediaData {
+                if vInput.append(sampleBuffer) {
+                    hasWrittenFrame = true
+                }
             }
-        } else if let aInput = audioInput, aInput.isReadyForMoreMediaData {
-            if aInput.append(sampleBuffer) {
-                hasWrittenFrame = true
+        }
+
+        if mediaType == kCMMediaType_Audio {
+            if let aInput = audioInput, aInput.isReadyForMoreMediaData {
+                print("✅ Appending audio frame at \(timestamp.seconds)")
+                if aInput.append(sampleBuffer) {
+                    hasWrittenFrame = true
+                }
             }
         }
     }
