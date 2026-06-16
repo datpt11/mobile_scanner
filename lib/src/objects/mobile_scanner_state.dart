@@ -22,6 +22,7 @@ class MobileScannerState {
     required this.zoomScale,
     required this.deviceOrientation,
     required this.recordState,
+    this.previewRotation = 0,
     this.error,
   });
 
@@ -83,6 +84,13 @@ class MobileScannerState {
   /// The current device UI orientation.
   final DeviceOrientation deviceOrientation;
 
+  /// The clockwise rotation, in degrees, that the camera preview must be
+  /// rotated by to be displayed upright.
+  ///
+  /// On Android this is reported by CameraX for the active preview. It is 0 on
+  /// other platforms and when no rotation correction is needed.
+  final int previewRotation;
+
   /// Whether permission to access the camera was granted.
   bool get hasCameraPermission {
     return isInitialized && error?.errorCode != MobileScannerErrorCode.permissionDenied;
@@ -101,6 +109,7 @@ class MobileScannerState {
     DeviceOrientation? deviceOrientation,
     double? zoomScale,
     RecordState? recordState,
+    int? previewRotation,
   }) {
     return MobileScannerState(
       availableCameras: availableCameras ?? this.availableCameras,
@@ -114,6 +123,7 @@ class MobileScannerState {
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
       zoomScale: zoomScale ?? this.zoomScale,
       recordState: recordState ?? this.recordState,
+      previewRotation: previewRotation ?? this.previewRotation,
     );
   }
 }

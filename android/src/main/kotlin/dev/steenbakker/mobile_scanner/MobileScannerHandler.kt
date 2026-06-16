@@ -106,6 +106,10 @@ class MobileScannerHandler(
         barcodeHandler.publishEvent(mapOf("name" to "zoomScaleState", "data" to zoomScale))
     }
 
+    private val previewRotationCallback: PreviewRotationCallback = {rotationDegrees: Int ->
+        barcodeHandler.publishEvent(mapOf("name" to "previewRotation", "data" to rotationDegrees))
+    }
+
     init {
         methodChannel = MethodChannel(binaryMessenger,
             "dev.steenbakker.mobile_scanner/scanner/method")
@@ -118,7 +122,8 @@ class MobileScannerHandler(
         deviceOrientationChannel!!.setStreamHandler(deviceOrientationListener)
 
         mobileScanner = MobileScanner(
-            activity, textureRegistry, callback, errorCallback, deviceOrientationListener)
+            activity, textureRegistry, callback, errorCallback, deviceOrientationListener,
+            previewRotationCallback)
     }
 
     fun dispose(activityPluginBinding: ActivityPluginBinding) {

@@ -25,10 +25,36 @@ class CameraPreview extends StatelessWidget {
               value.deviceOrientation.isLandscape
                   ? value.size.flipped
                   : value.size,
-          child: _wrapInRotatedBox(child: controller.buildCameraView()),
+          child: _wrapInRotatedBox(
+            child: _applyPreviewRotation(
+              previewRotation: value.previewRotation,
+              child: controller.buildCameraView(),
+            ),
+          ),
         );
       },
     );
+  }
+
+  /// Applies the rotation correction that CameraX reports for the preview
+  /// buffer (Android only).
+  ///
+  /// CameraX delivers the preview buffer in an orientation that depends on the
+  /// device, sensor and the resolved CameraX version. This rotates the buffer
+  /// by the reported amount so it is displayed upright. It is a no-op on other
+  /// platforms and when no correction is needed.
+  Widget _applyPreviewRotation({
+    required int previewRotation,
+    required Widget child,
+  }) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return child;
+    }
+    final int quarterTurns = (previewRotation ~/ 90) % 4;
+    if (quarterTurns == 0) {
+      return child;
+    }
+    return RotatedBox(quarterTurns: quarterTurns, child: child);
   }
 
   Widget _wrapInRotatedBox({required Widget child}) {
