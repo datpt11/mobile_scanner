@@ -130,6 +130,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   StreamSubscription<TorchState>? _torchStateSubscription;
   StreamSubscription<double>? _zoomScaleSubscription;
   StreamSubscription<DeviceOrientation>? _deviceOrientationSubscription;
+  StreamSubscription<int>? _previewRotationSubscription;
   StreamSubscription<RecordState>? _recordStateSubscription;
   StreamSubscription<RecordFile?>? _recordFileSubscription;
   bool _isDisposed = false;
@@ -143,6 +144,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     _torchStateSubscription?.cancel();
     _zoomScaleSubscription?.cancel();
     _deviceOrientationSubscription?.cancel();
+    _previewRotationSubscription?.cancel();
     _recordStateSubscription?.cancel();
     _recordFileSubscription?.cancel();
 
@@ -150,6 +152,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     _torchStateSubscription = null;
     _zoomScaleSubscription = null;
     _deviceOrientationSubscription = null;
+    _previewRotationSubscription = null;
     _recordStateSubscription = null;
     _recordFileSubscription = null;
   }
@@ -224,6 +227,18 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
         }
 
         value = value.copyWith(deviceOrientation: orientation);
+      });
+
+      // The preview rotation reported by CameraX (Android only). This adapts
+      // to the active CameraX version and the buffer orientation it delivers.
+      _previewRotationSubscription = implementation.previewRotationStream.listen((
+        int rotationDegrees,
+      ) {
+        if (_isDisposed) {
+          return;
+        }
+
+        value = value.copyWith(previewRotation: rotationDegrees);
       });
     }
   }

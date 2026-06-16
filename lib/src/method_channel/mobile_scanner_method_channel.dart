@@ -62,6 +62,16 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
     return _deviceOrientationStream!;
   }
 
+  /// The clockwise rotation (in degrees) that CameraX reports the preview
+  /// must be rotated by, on Android.
+  ///
+  /// Emitted whenever CameraX updates its transformation info for the preview.
+  Stream<int> get previewRotationStream {
+    return eventsStream
+        .where((event) => event['name'] == 'previewRotation')
+        .map((event) => event['data'] as int? ?? 0);
+  }
+
   @override
   Stream<RecordState> get recordStateStream {
     return eventsStream
@@ -246,17 +256,10 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
       return const SizedBox();
     }
 
-    final Widget texture = Texture(textureId: _textureId!);
-
-    // CameraX reports `TransformationInfo.rotationDegrees == 0` on this device
-    // even though `handlesCropAndRotation` is false: the preview buffer is
-    // already delivered upright (a portrait-shaped resolution), so applying a
-    // sensor-based rotation correction would over-rotate it.
-    //
-    // Therefore we return the texture as-is. The device-orientation (UI)
-    // rotation is still handled by the outer `RotatedBox` in `CameraPreview`
-    // (`_wrapInRotatedBox`).
-    return texture;
+    // The texture is returned as-is. Any rotation correction is applied by
+    // `CameraPreview`, which rotates by the `previewRotation` reported by
+    // CameraX (see [previewRotationStream]) plus the device UI orientation.
+    return Texture(textureId: _textureId!);
   }
 
   @override

@@ -67,6 +67,7 @@ class MobileScanner(
     private val mobileScannerCallback: MobileScannerCallback,
     private val mobileScannerErrorCallback: MobileScannerErrorCallback,
     private val deviceOrientationListener: DeviceOrientationListener,
+    private val previewRotationCallback: PreviewRotationCallback,
     private val barcodeScannerFactory: (options: BarcodeScannerOptions?) -> BarcodeScanner = ::defaultBarcodeScannerFactory,
 ) {
 
@@ -237,20 +238,18 @@ class MobileScanner(
         return Preview.SurfaceProvider {
             request: SurfaceRequest ->
             run {
-                // TODO(rotation): temporary diagnostic for the Samsung preview
-                // rotation issue. `rotationDegrees` is the clockwise rotation
-                // CameraX says the app must apply to display the buffer upright
-                // for the current target rotation. This is the ground truth
-                // that the Dart-side rotation must match. Remove once fixed.
+                // CameraX reports the clockwise rotation (in degrees) that the
+                // app must apply to display the preview buffer upright for the
+                // current target rotation. This depends on the device, the
+                // sensor orientation AND the resolved CameraX version (a host
+                // app that also pulls a newer androidx.camera can change the
+                // buffer orientation), so it must come from CameraX itself
+                // rather than a fixed formula. We forward it to Dart, which
+                // rotates the preview by exactly this amount.
                 request.setTransformationInfoListener(
                     ContextCompat.getMainExecutor(activity)
                 ) { info ->
-                    Log.e(
-                        "MOBILE_SCANNER_ROTATION",
-                        "TransformationInfo rotationDegrees=${info.rotationDegrees} " +
-                            "targetRotation=${info.targetRotation} " +
-                            "requestResolution=${request.resolution.width}x${request.resolution.height}"
-                    )
+                    previewRotationCallback(info.rotationDegrees)
                 }
 
                 // Set the callback for the surfaceProducer to invalidate Surfaces that it produces
@@ -572,18 +571,6 @@ class MobileScanner(
             }
 
             deviceOrientationListener.start()
-
-            // TODO(rotation): temporary diagnostic for the Samsung preview
-            // rotation issue. Uses Log.e so it always shows in logcat.
-            // Remove once the orientation is confirmed correct.
-            Log.e(
-                "MOBILE_SCANNER_ROTATION",
-                "handlesCropAndRotation=${surfaceProducer!!.handlesCropAndRotation()} " +
-                    "sensorRotationDegrees=$sensorRotationDegrees " +
-                    "naturalOrientation=${deviceOrientationListener.getUIOrientation().serialize()} " +
-                    "cameraDirection=$cameraDirection " +
-                    "resolution=${resolution.width}x${resolution.height}"
-            )
 
             mobileScannerStartedCallback(
                 MobileScannerStartParameters(
