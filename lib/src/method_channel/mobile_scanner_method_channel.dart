@@ -10,6 +10,7 @@ import 'package:mobile_scanner/src/enums/mobile_scanner_error_code.dart';
 import 'package:mobile_scanner/src/enums/record_state.dart';
 import 'package:mobile_scanner/src/enums/torch_state.dart';
 import 'package:mobile_scanner/src/method_channel/android_surface_producer_delegate.dart';
+import 'package:mobile_scanner/src/method_channel/rotated_preview.dart';
 import 'package:mobile_scanner/src/mobile_scanner_exception.dart';
 import 'package:mobile_scanner/src/mobile_scanner_platform_interface.dart';
 import 'package:mobile_scanner/src/mobile_scanner_view_attributes.dart';
@@ -254,16 +255,16 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
     // On Android, the underlying device orientation stream will emit the
     // current orientation
     // when the first listener is attached.
-    // if (_surfaceProducerDelegate case final AndroidSurfaceProducerDelegate delegate
-    //     when !delegate.handlesCropAndRotation) {
-    //   return RotatedPreview.fromCameraDirection(
-    //     delegate.cameraFacingDirection,
-    //     deviceOrientationStream: deviceOrientationChangedStream,
-    //     initialDeviceOrientation: delegate.initialDeviceOrientation,
-    //     sensorOrientationDegrees: delegate.sensorOrientationDegrees,
-    //     child: texture,
-    //   );
-    // }
+    if (_surfaceProducerDelegate case final AndroidSurfaceProducerDelegate delegate
+        when !delegate.handlesCropAndRotation) {
+      return RotatedPreview.fromCameraDirection(
+        delegate.cameraFacingDirection,
+        deviceOrientationStream: deviceOrientationChangedStream,
+        initialDeviceOrientation: delegate.initialDeviceOrientation,
+        sensorOrientationDegrees: delegate.sensorOrientationDegrees,
+        child: texture,
+      );
+    }
 
     return texture;
   }
