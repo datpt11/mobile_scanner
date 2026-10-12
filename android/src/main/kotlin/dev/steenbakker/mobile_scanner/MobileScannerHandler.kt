@@ -7,7 +7,6 @@ import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -79,13 +78,13 @@ class MobileScannerHandler(
         barcodeHandler.publishEvent(mapOf("name" to "recordState", "data" to state))
     }
 
-    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, id: String?, _: Int? ->
-        if (url != null) {
-            val id = id ?: ""
-            barcodeHandler.publishEvent(mapOf("name" to "file", "data" to url, "id" to id))
-        } else {
-            Log.d("", "Video recording error")
-        }
+    private val videoRecordCompletionCallback: VideoRecordCompletionCallback = { url: String?, id: String?, error: Int? ->
+        // Always publish, even without a file, so Dart knows the recording has ended.
+        // `error` is a CameraX VideoRecordEvent.Finalize error code, or -1 if it never started.
+        val event = mutableMapOf<String, Any>("name" to "file", "id" to (id ?: ""))
+        if (url != null) event["data"] = url
+        if (error != null) event["error"] = error
+        barcodeHandler.publishEvent(event)
     }
 
     private val errorCallback: MobileScannerErrorCallback = {error: String ->
@@ -399,9 +398,16 @@ class MobileScannerHandler(
 
     private fun startRecording(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String?>("id")
-        mobileScanner?.startRecording(id, recordStateCallback, videoRecordCompletionCallback);
+        val scanner = mobileScanner
+        if (scanner == null) {
+            videoRecordCompletionCallback(null, id, MobileScanner.RECORDING_NOT_STARTED)
+        } else {
+            scanner.startRecording(id, recordStateCallback, videoRecordCompletionCallback)
+        }
+        result.success(null)
     }
     private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {
         mobileScanner?.stopRecording(recordStateCallback)
+        result.success(null)
     }
 }

@@ -52,6 +52,8 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     fileprivate lazy var videoDataOutput = AVCaptureVideoDataOutput()
     fileprivate lazy var audioDataOutput = AVCaptureAudioDataOutput()
     private var recorder = VideoRecorder()
+    /// Id passed to startRecording, used when stopRecording is called without one.
+    private var recordingId: String?
 
     fileprivate(set) lazy var isRecording = false
     fileprivate var videoWriter: AVAssetWriter!
@@ -130,7 +132,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         case "stopRecording":
            stopRecording(call, result)
        case "startRecording":
-           startRecording()
+           startRecording(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -918,7 +920,8 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
     }
     
-    func startRecording() {
+    func startRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        recordingId = (call.arguments as? [String: Any])?["id"] as? String
         let fileName = UUID().uuidString + ".mp4"
         let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
 
@@ -948,11 +951,15 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             print("▶️ Recording started at \(outputURL)")
         } catch {
             print("❌ Failed to start recording: \(error.localizedDescription)")
+            // Report it so Dart does not keep waiting for a video that will never come.
+            let event: [String: Any?] = ["name": "file", "data": nil, "id": recordingId, "error": -1]
+            sink?(event)
         }
+        result(nil)
     }
-        
+
      func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-         let id: String? = (call.arguments as! Dictionary<String, Any?>)["id"] as? String? ?? nil
+         let id: String? = (call.arguments as? [String: Any])?["id"] as? String ?? recordingId
         recorder.stopRecording {status, url in
             if let fileURL = url {
                 print("✅ Video saved at \(fileURL)")
@@ -961,10 +968,12 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 self.sink?(["name": "recordState", "data": 0])
             } else {
                 print("⚠️ Recording cancelled (no frames)")
+                let event: [String: Any?] = ["name": "file", "data": nil, "id": id, "error": -1]
+                self.sink?(event)
                 self.sink?(["name": "recordState", "data": 0])
             }
         }
-        
+        result(nil)
      }
 
     // Observer for torch state

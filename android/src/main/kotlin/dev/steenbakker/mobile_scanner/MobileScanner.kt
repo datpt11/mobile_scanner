@@ -99,6 +99,9 @@ class MobileScanner(
     private var currentRecording: Recording? = null
 
     companion object {
+        /// Error code reported when a recording could not be started at all.
+        const val RECORDING_NOT_STARTED = -1
+
         // Configure the `ProcessCameraProvider` to only log errors.
         // This prevents the informational log spam from CameraX.
         private fun configureCameraProcessProvider() {
@@ -363,30 +366,59 @@ class MobileScanner(
     fun startRecording(id: String?, recordStateCallback: RecordStateCallback, videoRecordCompletionCallback: VideoRecordCompletionCallback) {
         val videoFile = File(outputDirectory, "${System.currentTimeMillis()}.mp4")
         val outputOptions = FileOutputOptions.Builder(videoFile).build()
-        val recording = videoCapture?.output?.prepareRecording(activity.applicationContext, outputOptions)?.apply {
-            withAudioEnabled()
-        }?.start(ContextCompat.getMainExecutor(activity.applicationContext)) { recordEvent ->
-            when (recordEvent) {
-                is VideoRecordEvent.Start -> {
-                    Log.d("TAG", "Video recording started")
-                    recordStateCallback(1)
-                }
-                is VideoRecordEvent.Finalize -> {
-                    if (recordEvent.hasError()) {
-                        Log.e("TAG", "Video recording error: ${recordEvent.error}")
-//                        result.error("VIDEO_RECORDING_ERROR", recordEvent.error.toString(), null)
-                        videoRecordCompletionCallback(null, id, recordEvent.error)
-                    } else {
-                        Log.d("TAG", "Video recording succeeded: ${recordEvent.outputResults.outputUri}")
-                        recordEvent.outputResults.outputUri.path?.let {
+        var recording: Recording? = null
+        try {
+            recording = videoCapture?.output?.prepareRecording(activity.applicationContext, outputOptions)?.apply {
+                withAudioEnabled()
+            }?.start(ContextCompat.getMainExecutor(activity.applicationContext)) { recordEvent ->
+                when (recordEvent) {
+                    is VideoRecordEvent.Start -> {
+                        Log.d("TAG", "Video recording started")
+                        recordStateCallback(1)
+                    }
+                    is VideoRecordEvent.Finalize -> {
+                        // A recording can be finalized without stopRecording() being called,
+                        // e.g. CameraX closes the camera when the activity is stopped.
+                        if (currentRecording === recording) {
+                            currentRecording = null
+                            recordStateCallback(0)
+                        }
+                        val error = recordEvent.error
+                        if (!recordEvent.hasError()) {
+                            Log.d("TAG", "Video recording succeeded: ${recordEvent.outputResults.outputUri}")
                             videoRecordCompletionCallback(
-                                it, id, null)
+                                recordEvent.outputResults.outputUri.path ?: videoFile.absolutePath, id, null)
+                        } else if (isOutputUsable(error) && videoFile.exists() && videoFile.length() > 0) {
+                            // CameraX still writes the frames recorded before the error.
+                            Log.w("TAG", "Video recording finalized with error $error, output kept")
+                            videoRecordCompletionCallback(videoFile.absolutePath, id, error)
+                        } else {
+                            Log.e("TAG", "Video recording error: $error", recordEvent.cause)
+                            if (videoFile.exists()) {
+                                videoFile.delete()
+                            }
+                            videoRecordCompletionCallback(null, id, error)
                         }
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e("TAG", "Failed to start video recording", e)
+        }
+        if (recording == null) {
+            // The camera is not bound (or start failed), so no Finalize event will ever come.
+            videoRecordCompletionCallback(null, id, RECORDING_NOT_STARTED)
         }
         currentRecording = recording
+    }
+
+    /// Errors for which CameraX documents that the output file is still generated and playable.
+    private fun isOutputUsable(error: Int): Boolean = when (error) {
+        VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE,
+        VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE,
+        VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED,
+        VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED -> true
+        else -> false
     }
 
     fun stopRecording(recordStateCallback: RecordStateCallback) {

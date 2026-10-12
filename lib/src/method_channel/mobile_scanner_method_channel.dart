@@ -82,7 +82,11 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   @override
   Stream<RecordFile> get recordFileStream {
     return eventsStream.where((event) => event['name'] == 'file').map((event) {
-      return RecordFile(file: event['data']! as String? ?? '', id: event['id'] as String? ?? '');
+      return RecordFile(
+        file: event['data'] as String?,
+        id: event['id'] as String? ?? '',
+        error: event['error'] as int?,
+      );
     });
   }
 

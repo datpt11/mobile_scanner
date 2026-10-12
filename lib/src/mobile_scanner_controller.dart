@@ -555,11 +555,15 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
 
   /// Start recording.Add commentMore actions
   ///
-  /// Does nothing if the camera is not running.
+  /// If the camera is not running, nothing is recorded and a [RecordFile]
+  /// with an error is emitted on [recordFile].
   Future<void> startRecording({String? id}) async {
     _throwIfNotInitialized();
 
     if (!value.isRunning) {
+      if (!_recordFileController.isClosed) {
+        _recordFileController.add(RecordFile(id: id ?? '', error: -1));
+      }
       return;
     }
     final RecordState recordState = value.recordState;
