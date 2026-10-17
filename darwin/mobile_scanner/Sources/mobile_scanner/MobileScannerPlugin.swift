@@ -52,8 +52,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     fileprivate lazy var videoDataOutput = AVCaptureVideoDataOutput()
     fileprivate lazy var audioDataOutput = AVCaptureAudioDataOutput()
     private var recorder = VideoRecorder()
-    /// Id passed to startRecording, used when stopRecording is called without one.
+    /// Identity of the active recording; a legacy stop id is only a fallback.
     private var recordingId: String?
+    private var hasActiveRecording = false
+    private static let recordingNotStarted = -1 // RecordFile.notStarted in Dart.
 
     fileprivate(set) lazy var isRecording = false
     fileprivate var videoWriter: AVAssetWriter!
@@ -766,7 +768,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         result(nil)
     }
 
-    func pause(_ call: FlutterMethodCall, _ result: FlutterResult) {
+    func pause(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let force = (call.arguments as? Bool) ?? false
         if (!force) {
             if (paused || stopped) {
@@ -776,22 +778,24 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             }
         }
 
-        releaseCamera()
-
-        result(nil)
+        finishRecording {
+            self.releaseCamera()
+            result(nil)
+        }
     }
 
-    func stop(_ call: FlutterMethodCall, _ result: FlutterResult) {
+    func stop(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let force = (call.arguments as? Bool) ?? false
         if (!paused && stopped && !force) {
             result(nil)
 
             return
         }
-        releaseCamera()
-        releaseTexture()
-
-        result(nil)
+        finishRecording {
+            self.releaseCamera()
+            self.releaseTexture()
+            result(nil)
+        }
     }
 
     private func releaseCamera() {
@@ -921,7 +925,20 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     }
     
     func startRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-        recordingId = (call.arguments as? [String: Any])?["id"] as? String
+        let id = (call.arguments as? [String: Any])?["id"] as? String
+        guard !hasActiveRecording else {
+            publishRecordingFile(nil, id: id)
+            result(nil)
+            return
+        }
+        guard captureSession?.isRunning == true else {
+            publishRecordingFile(nil, id: id)
+            sink?(["name": "recordState", "data": 0])
+            result(nil)
+            return
+        }
+        hasActiveRecording = true
+        recordingId = id
         let fileName = UUID().uuidString + ".mp4"
         let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
 
@@ -945,36 +962,49 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         do {
             try recorder.startRecording(to: outputURL,
                                         videoSettings: videoSettings,
-                                        audioSettings: audioSettings, completion: { status in
-                self.sink?(["name": "recordState", "data": status])
-                                        })
-            print("▶️ Recording started at \(outputURL)")
+                                        audioSettings: audioSettings, onFinished: { [weak self] url in
+                guard let self = self else { return }
+                let id = self.recordingId
+                self.recordingId = nil
+                self.hasActiveRecording = false
+                self.publishRecordingFile(url, id: id)
+                self.sink?(["name": "recordState", "data": 0])
+            })
+            sink?(["name": "recordState", "data": 1])
         } catch {
             print("❌ Failed to start recording: \(error.localizedDescription)")
-            // Report it so Dart does not keep waiting for a video that will never come.
-            let event: [String: Any?] = ["name": "file", "data": nil, "id": recordingId, "error": -1]
-            sink?(event)
+            recordingId = nil
+            hasActiveRecording = false
+            publishRecordingFile(nil, id: id)
+            sink?(["name": "recordState", "data": 0])
         }
         result(nil)
     }
 
-     func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-         let id: String? = (call.arguments as? [String: Any])?["id"] as? String ?? recordingId
-        recorder.stopRecording {status, url in
-            if let fileURL = url {
-                print("✅ Video saved at \(fileURL)")
-                let event: [String: Any?] = ["name": "file", "data": fileURL.path, "id": id]
-                self.sink?(event)
-                self.sink?(["name": "recordState", "data": 0])
-            } else {
-                print("⚠️ Recording cancelled (no frames)")
-                let event: [String: Any?] = ["name": "file", "data": nil, "id": id, "error": -1]
-                self.sink?(event)
-                self.sink?(["name": "recordState", "data": 0])
-            }
+    func stopRecording(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        if hasActiveRecording && recordingId == nil {
+            recordingId = (call.arguments as? [String: Any])?["id"] as? String
         }
-        result(nil)
-     }
+        finishRecording { result(nil) }
+    }
+
+    private func finishRecording(completion: @escaping () -> Void) {
+        guard hasActiveRecording else {
+            completion()
+            return
+        }
+        recorder.stopRecording(completion: completion)
+    }
+
+    private func publishRecordingFile(_ url: URL?, id: String?) {
+        var event: [String: Any] = ["name": "file", "id": id ?? ""]
+        if let url = url {
+            event["data"] = url.path
+        } else {
+            event["error"] = Self.recordingNotStarted
+        }
+        sink?(event)
+    }
 
     // Observer for torch state
     public override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {

@@ -133,6 +133,10 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   StreamSubscription<int>? _previewRotationSubscription;
   StreamSubscription<RecordState>? _recordStateSubscription;
   StreamSubscription<RecordFile?>? _recordFileSubscription;
+  _RecordingSession? _recording;
+  Future<void>? _cameraStopFuture;
+  Future<void>? _disposeFuture;
+  bool _isDisposing = false;
   bool _isDisposed = false;
   // This completer keeps track of whether the MobileScanner widget,
   // that is attached to this controller,
@@ -204,7 +208,16 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
         return;
       }
 
-      value = value.copyWith(recordState: recordState);
+      if (value.recordState != recordState) {
+        value = value.copyWith(recordState: recordState);
+      }
+      if (recordState == RecordState.on) {
+        _recording?.receivedOff = false;
+      }
+      if (recordState == RecordState.off) {
+        _recording?.receivedOff = true;
+        _completeRecording();
+      }
     });
 
     _recordFileSubscription = MobileScannerPlatform.instance.recordFileStream.listen((
@@ -214,7 +227,17 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
         return;
       }
 
+      final _RecordingSession? recording = _recording;
+      if (recording != null && (recording.id == null || recording.id == file.id)) {
+        recording.receivedFile = true;
+        // A terminal file event ends this recording, including an interrupted
+        // recording. Consumers must see the same state on both platforms.
+        if (value.recordState != RecordState.off) {
+          value = value.copyWith(recordState: RecordState.off);
+        }
+      }
       _recordFileController.add(file);
+      _completeRecording();
     });
 
     if (MobileScannerPlatform.instance case final MethodChannelMobileScanner implementation
@@ -253,7 +276,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       );
     }
 
-    if (_isDisposed) {
+    if (_isDisposed || _isDisposing) {
       throw MobileScannerException(
         errorCode: MobileScannerErrorCode.controllerDisposed,
         errorDetails: MobileScannerErrorDetails(
@@ -263,18 +286,34 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     }
   }
 
-  /// Returns false if stop is called but not necessary, otherwise true is
-  /// returned.
-  bool _stop() {
-    // Do nothing if not initialized or already stopped.
-    // On the web, the permission popup triggers a lifecycle change from resumed
-    // to inactive,
-    // due to the permission popup gaining focus.
-    // This would 'stop' the camera while it is not ready yet.
+  void _completeRecording() {
+    final _RecordingSession? recording = _recording;
+    if (recording == null || !recording.receivedFile || !recording.receivedOff) {
+      return;
+    }
+    _recording = null;
+    recording.done.complete();
+  }
+
+  Future<void> _stopCamera({required bool pause}) {
+    return _cameraStopFuture ??= _stopCameraAndRecording(pause: pause).whenComplete(() {
+      _cameraStopFuture = null;
+    });
+  }
+
+  Future<void> _stopCameraAndRecording({required bool pause}) async {
     if (!value.isInitialized || !value.isRunning || _isDisposed) {
-      return false;
+      return;
     }
 
+    // Keep the event channel alive until native has finalized the video and
+    // Dart has delivered its result. This also covers a pending Start event.
+    await _finishRecording();
+    if (pause) {
+      await MobileScannerPlatform.instance.pause();
+    } else {
+      await MobileScannerPlatform.instance.stop();
+    }
     _disposeListeners();
 
     final TorchState oldTorchState = value.torchState;
@@ -288,7 +327,6 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       recordState:
           oldRecordState == RecordState.unavailable ? RecordState.unavailable : RecordState.off,
     );
-    return true;
   }
 
   /// Analyze an image file.
@@ -373,7 +411,10 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   /// If the permission is denied on iOS, MacOS or Web, there is no way to
   /// request it again.
   Future<void> start({CameraFacing? cameraDirection}) async {
-    if (_isDisposed) {
+    if (_cameraStopFuture != null) {
+      await _cameraStopFuture;
+    }
+    if (_isDisposed || _isDisposing) {
       throw MobileScannerException(
         errorCode: MobileScannerErrorCode.controllerDisposed,
         errorDetails: MobileScannerErrorDetails(
@@ -500,9 +541,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   ///
   /// Does nothing if the camera is already stopped.
   Future<void> stop() async {
-    if (_stop()) {
-      await MobileScannerPlatform.instance.stop();
-    }
+    await _stopCamera(pause: false);
   }
 
   /// Pause the camera.
@@ -512,9 +551,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   ///
   /// Does nothing if the camera is already paused or stopped.
   Future<void> pause() async {
-    if (_stop()) {
-      await MobileScannerPlatform.instance.pause();
-    }
+    await _stopCamera(pause: true);
   }
 
   /// Switch between the front and back camera.
@@ -553,42 +590,56 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     }
   }
 
-  /// Start recording.Add commentMore actions
+  /// Start recording.
   ///
   /// If the camera is not running, nothing is recorded and a [RecordFile]
-  /// with an error is emitted on [recordFile].
+  /// with an error is emitted on [recordFile]. A second start while a recording
+  /// is starting, recording or finishing also emits an error for the new id.
+  ///
+  /// Throws [MobileScannerException] if uninitialized or disposed.
   Future<void> startRecording({String? id}) async {
     _throwIfNotInitialized();
 
-    if (!value.isRunning) {
+    if (!value.isRunning ||
+        _cameraStopFuture != null ||
+        _recording != null ||
+        value.recordState == RecordState.on) {
       if (!_recordFileController.isClosed) {
-        _recordFileController.add(RecordFile(id: id ?? '', error: -1));
+        _recordFileController.add(RecordFile(id: id ?? '', error: RecordFile.notStarted));
       }
       return;
     }
-    final RecordState recordState = value.recordState;
-
-    if (recordState == RecordState.on) {
-      return;
+    final recording = _RecordingSession(id);
+    _recording = recording;
+    try {
+      await MobileScannerPlatform.instance.startRecording(id: id);
+    } catch (_) {
+      if (identical(_recording, recording)) {
+        _recording = null;
+        value = value.copyWith(recordState: RecordState.off);
+        _recordFileController.add(RecordFile(id: id ?? '', error: RecordFile.notStarted));
+        recording.done.complete();
+      }
+      rethrow;
     }
-    await MobileScannerPlatform.instance.startRecording(id: id);
   }
 
   /// Stop recording.
   ///
-  /// Does nothing if the camera is not recording.
+  /// Completes after the recording has finalized and its [RecordFile] has been
+  /// emitted. Does nothing if the camera is not recording.
   Future<void> stopRecording({String? id}) async {
     _throwIfNotInitialized();
 
-    if (!value.isRunning) {
-      return;
-    }
-    final RecordState recordState = value.recordState;
+    await _finishRecording(id: id);
+  }
 
-    if (recordState == RecordState.off || recordState == RecordState.unavailable) {
-      return;
-    }
-    await MobileScannerPlatform.instance.stopRecording(id: id);
+  Future<void> _finishRecording({String? id}) async {
+    final _RecordingSession? recording = _recording;
+    if (recording == null) return;
+    recording.stopFuture ??= MobileScannerPlatform.instance.stopRecording(id: id);
+    await recording.stopFuture;
+    await recording.done.future;
   }
 
   /// Switches the flashlight on or off.
@@ -634,14 +685,25 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   /// Once the controller is disposed, it cannot be used anymore.
   @override
   Future<void> dispose() async {
-    if (_isDisposed) {
+    if (_disposeFuture != null) {
+      await _disposeFuture;
       return;
     }
+    _disposeFuture = _disposeController();
+    try {
+      await _disposeFuture;
+    } finally {
+      super.dispose();
+    }
+  }
 
+  Future<void> _disposeController() async {
+    _isDisposing = true;
+    await stop();
+    _disposeListeners();
     _isDisposed = true;
     unawaited(_barcodesController.close());
-    super.dispose();
-
+    unawaited(_recordFileController.close());
     await MobileScannerPlatform.instance.dispose();
   }
 
@@ -658,4 +720,16 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
 
     _isAttachedCompleter.complete();
   }
+}
+
+// Reserve a recording synchronously, before native posts its Start event.
+// Keep the reservation until both terminal events have arrived.
+class _RecordingSession {
+  _RecordingSession(this.id);
+
+  final String? id;
+  final Completer<void> done = Completer<void>();
+  Future<void>? stopFuture;
+  bool receivedFile = false;
+  bool receivedOff = false;
 }

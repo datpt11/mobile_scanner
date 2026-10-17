@@ -1,132 +1,130 @@
 import AVFoundation
 
 class VideoRecorder {
+    enum RecordingError: Error {
+        case alreadyRecording
+        case unsupportedSettings
+        case outputAlreadyExists
+    }
+
+    // Audio, video and method calls arrive on different queues. All writer
+    // state belongs to this queue; terminal callbacks always run on main.
+    private let queue = DispatchQueue(label: "mobile_scanner.recorder")
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var audioInput: AVAssetWriterInput?
     private var outputURL: URL?
-    private var hasWrittenFrame = false
-    private var sessionAtSourceTime: CMTime?
+    private var hasWrittenVideo = false
+    private var sessionStarted = false
+    private var finishing = false
+    private var onFinished: ((URL?) -> Void)?
+    private var stopCallbacks: [() -> Void] = []
 
-    // ✅ Thêm biến đánh dấu trạng thái quay
-    private var isRecording = false
-
-    func startRecording(to url: URL, videoSettings: [String: Any], audioSettings: [String: Any], completion: @escaping (Int?) -> Void) throws {
-        outputURL = url
-        hasWrittenFrame = false
-        sessionAtSourceTime = nil
-
-        writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-
-        videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-        audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
-
-        videoInput?.expectsMediaDataInRealTime = true
-        audioInput?.expectsMediaDataInRealTime = true
-
-        if let vInput = videoInput, writer!.canAdd(vInput) {
-            writer!.add(vInput)
+    func startRecording(to url: URL, videoSettings: [String: Any], audioSettings: [String: Any], onFinished: @escaping (URL?) -> Void) throws {
+        try queue.sync {
+            guard writer == nil else { throw RecordingError.alreadyRecording }
+            guard !FileManager.default.fileExists(atPath: url.path) else {
+                throw RecordingError.outputAlreadyExists
+            }
+            let newWriter = try AVAssetWriter(outputURL: url, fileType: .mp4)
+            let video = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+            let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+            video.expectsMediaDataInRealTime = true
+            audio.expectsMediaDataInRealTime = true
+            guard newWriter.canAdd(video), newWriter.canAdd(audio) else {
+                newWriter.cancelWriting()
+                try? FileManager.default.removeItem(at: url)
+                throw RecordingError.unsupportedSettings
+            }
+            newWriter.add(video)
+            newWriter.add(audio)
+            writer = newWriter
+            videoInput = video
+            audioInput = audio
+            outputURL = url
+            self.onFinished = onFinished
         }
-        if let aInput = audioInput, writer!.canAdd(aInput) {
-            print("✅ Added audio input")
-            writer!.add(aInput)
-        }
-
-        // ✅ Đánh dấu trạng thái đã bắt đầu quay
-        isRecording = true
-        completion(1)
-        print("✅ Recorder ready at: \(url)")
     }
 
     func append(sampleBuffer: CMSampleBuffer) {
-        guard isRecording else { return }
-        
-        guard let writer = writer else { return }
-        guard writer.status != .failed else {
-            print("❌ Writer failed: \(writer.error?.localizedDescription ?? "Unknown")")
-            return
-        }
-
-        let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer)
-        let mediaType = CMFormatDescriptionGetMediaType(formatDesc!)
-
-        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-
-        // 👉 CHỈ start session khi gặp VIDEO FRAME ĐẦU TIÊN
-        if sessionAtSourceTime == nil && mediaType == kCMMediaType_Video {
-            sessionAtSourceTime = timestamp
-            writer.startWriting()
-            writer.startSession(atSourceTime: timestamp)
-            print("▶️ Start writing at \(timestamp.seconds)")
-        }
-
-        guard writer.status == .writing else { return }
-    
-        if mediaType == kCMMediaType_Video {
-            if let vInput = videoInput, vInput.isReadyForMoreMediaData {
-                if vInput.append(sampleBuffer) {
-                    hasWrittenFrame = true
-                }
+        queue.sync {
+            guard let writer = writer, !finishing else { return }
+            guard writer.status != .failed else {
+                completeRecording(url: nil)
+                return
             }
-        }
+            guard let format = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
+            let mediaType = CMFormatDescriptionGetMediaType(format)
 
-        if mediaType == kCMMediaType_Audio {
-            if let aInput = audioInput, aInput.isReadyForMoreMediaData {
-                print("✅ Appending audio frame at \(timestamp.seconds)")
-                if aInput.append(sampleBuffer) {
-                    hasWrittenFrame = true
+            // Audio received before the first video frame is intentionally skipped.
+            if !sessionStarted && mediaType == kCMMediaType_Video {
+                guard writer.startWriting() else {
+                    completeRecording(url: nil)
+                    return
+                }
+                writer.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+                sessionStarted = true
+            }
+            guard writer.status == .writing else { return }
+
+            if mediaType == kCMMediaType_Video, let input = videoInput, input.isReadyForMoreMediaData {
+                if input.append(sampleBuffer) { hasWrittenVideo = true }
+            } else if mediaType == kCMMediaType_Audio, let input = audioInput, input.isReadyForMoreMediaData {
+                input.append(sampleBuffer)
+            }
+            if writer.status == .failed { completeRecording(url: nil) }
+        }
+    }
+
+    func stopRecording(completion: @escaping () -> Void) {
+        queue.async {
+            guard let writer = self.writer else {
+                DispatchQueue.main.async(execute: completion)
+                return
+            }
+            self.stopCallbacks.append(completion)
+            guard !self.finishing else { return }
+            self.finishing = true
+
+            guard self.hasWrittenVideo, writer.status == .writing else {
+                self.completeRecording(url: nil)
+                return
+            }
+            self.videoInput?.markAsFinished()
+            self.audioInput?.markAsFinished()
+            let url = self.outputURL
+            writer.finishWriting {
+                self.queue.async {
+                    // finishWriting may itself fail (for example when storage fills).
+                    self.completeRecording(url: writer.status == .completed ? url : nil)
                 }
             }
         }
     }
 
-    func stopRecording(completion: @escaping (Int?, URL?) -> Void) {
-        guard isRecording else {
-            completion(0, nil)
-            return
+    // Called only on queue. Reset before publishing so a later start cannot
+    // have its writer or id cleared by the previous recording's completion.
+    private func completeRecording(url: URL?) {
+        if url == nil {
+            if let writer = writer, writer.status == .unknown || writer.status == .writing {
+                writer.cancelWriting()
+            }
+            if let outputURL = outputURL { try? FileManager.default.removeItem(at: outputURL) }
         }
-        
-        
-        guard let writer = writer else {
-            completion(0, nil)
-            return
-        }
-
-        // Nếu chưa ghi frame nào → hủy
-        guard hasWrittenFrame else {
-            print("⚠️ No frame written, cancel writing")
-            writer.cancelWriting()
-            completion(0, nil)
-            reset()
-            return
-        }
-
-        // Đảm bảo trạng thái đúng
-        guard writer.status == .writing else {
-            print("⚠️ Writer not in writing state: \(writer.status.rawValue)")
-            completion(0, nil)
-            reset()
-            return
-        }
-
-        videoInput?.markAsFinished()
-        audioInput?.markAsFinished()
-
-        writer.finishWriting { [weak self] in
-            guard let self = self else { return }
-            print("✅ Recording finished at: \(self.outputURL?.absoluteString ?? "nil")")
-            completion(0, self.outputURL)
-            self.reset()
-        }
-    }
-
-    private func reset() {
+        let callback = onFinished
+        let callbacks = stopCallbacks
         writer = nil
         videoInput = nil
         audioInput = nil
         outputURL = nil
-        sessionAtSourceTime = nil
-        hasWrittenFrame = false
-        isRecording = false
+        hasWrittenVideo = false
+        sessionStarted = false
+        finishing = false
+        onFinished = nil
+        stopCallbacks = []
+        DispatchQueue.main.async {
+            callback?(url)
+            callbacks.forEach { $0() }
+        }
     }
 }

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:chewie/chewie.dart';
 import 'package:flutter/foundation.dart';
@@ -88,30 +87,42 @@ class _MobileScannerAdvancedState extends State<MobileScannerAdvanced> {
     super.initState();
     controller = initController();
     _subscription = controller!.recordFile.listen((recordFile) async {
-      Future<String> getFileSize(String filepath, int decimals) async {
-        final file = File(filepath);
-        final int bytes = await file.length();
-        if (bytes <= 0) return '0 B';
-        const suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-        final int i = (log(bytes) / log(1024)).floor();
-        return '${(bytes / pow(1024, i)).toStringAsFixed(decimals)} ${suffixes[i]}';
+      if (!mounted) return;
+      final path = recordFile?.file;
+      if (path == null || path.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Recording failed. Please try again.')));
+        return;
       }
-
-      _videoPlayerController = VideoPlayerController.file(File(recordFile?.file ?? ''));
-      await _videoPlayerController.initialize().then(
-        (value) => setState(
-          () =>
-              _chewieController = ChewieController(
-                videoPlayerController: _videoPlayerController,
-                aspectRatio: _videoPlayerController.value.aspectRatio,
-                hideControlsTimer: const Duration(seconds: 5),
-              ),
-        ),
-      );
+      final player = VideoPlayerController.file(File(path));
+      try {
+        await player.initialize();
+      } catch (_) {
+        await player.dispose();
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('The recorded video could not be played.')));
+        return;
+      }
+      if (!mounted) {
+        await player.dispose();
+        return;
+      }
+      setState(() {
+        _videoPlayerController = player;
+        _chewieController = ChewieController(
+          videoPlayerController: player,
+          aspectRatio: player.value.aspectRatio,
+          hideControlsTimer: const Duration(seconds: 5),
+        );
+      });
       // await GallerySaver.saveVideo(File(file.toString()).path);
       // File(File(file.toString()).path).deleteSync();
       Future.delayed(const Duration(seconds: 5), () {
-        showModalBottomSheet(
+        if (!mounted) return;
+        showModalBottomSheet<void>(
           context: context,
           builder: (context) {
             return _videoPlayerController.value.isInitialized

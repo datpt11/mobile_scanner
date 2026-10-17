@@ -25,8 +25,12 @@ class BarcodeHandler(binaryMessenger: BinaryMessenger) : EventChannel.StreamHand
     }
 
     fun publishEvent(event: Map<String, Any>) {
-        Handler(Looper.getMainLooper()).post {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
             eventSink?.success(event)
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                eventSink?.success(event)
+            }
         }
     }
 

@@ -269,24 +269,30 @@ class MobileScannerHandler(
 
     private fun pause(call: MethodCall, result: MethodChannel.Result) {
         val force: Boolean = call.argument<Boolean>("force") ?: false
-        try {
-            mobileScanner!!.pause(force)
-            result.success(null)
-        } catch (e: Exception) {
-            when (e) {
-                is AlreadyPaused, is AlreadyStopped -> result.success(null)
-                else -> throw e
+        val scanner = mobileScanner ?: return result.success(null)
+        scanner.stopRecording {
+            try {
+                scanner.pause(force)
+                result.success(null)
+            } catch (e: Exception) {
+                when (e) {
+                    is AlreadyPaused, is AlreadyStopped -> result.success(null)
+                    else -> result.error(MobileScannerErrorCodes.GENERIC_ERROR, e.message, null)
+                }
             }
         }
     }
 
     private fun stop(call: MethodCall, result: MethodChannel.Result) {
         val force: Boolean = call.argument<Boolean>("force") ?: false
-        try {
-            mobileScanner!!.stop(force)
-            result.success(null)
-        } catch (e: AlreadyStopped) {
-            result.success(null)
+        val scanner = mobileScanner ?: return result.success(null)
+        scanner.stopRecording {
+            try {
+                scanner.stop(force)
+                result.success(null)
+            } catch (e: AlreadyStopped) {
+                result.success(null)
+            }
         }
     }
 
@@ -401,13 +407,14 @@ class MobileScannerHandler(
         val scanner = mobileScanner
         if (scanner == null) {
             videoRecordCompletionCallback(null, id, MobileScanner.RECORDING_NOT_STARTED)
+            recordStateCallback(0)
         } else {
             scanner.startRecording(id, recordStateCallback, videoRecordCompletionCallback)
         }
         result.success(null)
     }
     private fun stopRecording(call: MethodCall, result: MethodChannel.Result) {
-        mobileScanner?.stopRecording(recordStateCallback)
-        result.success(null)
+        val scanner = mobileScanner ?: return result.success(null)
+        scanner.stopRecording { result.success(null) }
     }
 }
